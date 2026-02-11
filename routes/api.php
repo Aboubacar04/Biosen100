@@ -38,7 +38,7 @@ Route::middleware(['auth:sanctum', 'account.active', 'admin'])->prefix('users')-
     Route::get('/',                      [UserController::class, 'index']);
     Route::post('/',                     [UserController::class, 'store']);
     Route::get('/{user}',                [UserController::class, 'show']);
-    Route::put('/{user}',                [UserController::class, 'update']);
+    Route::post('/{user}',                [UserController::class, 'update']);
     Route::patch('/{user}/role',         [UserController::class, 'changerRole']);
     Route::patch('/{user}/toggle-actif', [UserController::class, 'toggleActif']);
     Route::delete('/{user}',             [UserController::class, 'destroy']);
