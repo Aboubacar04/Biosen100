@@ -17,7 +17,8 @@ class ProduitController extends Controller
     }
 
     /**
-     * 📋 LISTE tous les produits
+     * 📋 LISTE tous les produits (PAGINÉE)
+     * Route : GET /api/produits?page=1&per_page=15
      */
     public function index(Request $request)
     {
@@ -25,19 +26,35 @@ class ProduitController extends Controller
             ? $request->input('boutique_id')
             : $request->user()->boutique_id;
 
+        $perPage = $request->input('per_page', 15);
+
         $query = Produit::with('categorie');
 
         if ($boutiqueId) {
             $query->where('boutique_id', $boutiqueId);
         }
 
-        $produits = $query->orderBy('created_at', 'desc')->get();
+        // Filtres optionnels
+        if ($request->input('categorie_id')) {
+            $query->where('categorie_id', $request->input('categorie_id'));
+        }
+
+        if ($request->input('search')) {
+            $query->where('nom', 'like', '%' . $request->input('search') . '%');
+        }
+
+        if ($request->input('actif') !== null) {
+            $query->where('actif', $request->boolean('actif'));
+        }
+
+        $produits = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         return response()->json($produits);
     }
 
     /**
-     * ⚠️ PRODUITS avec stock faible
+     * ⚠️ PRODUITS avec stock faible (PAGINÉE)
+     * Route : GET /api/produits/stock-faible?page=1
      */
     public function stockFaible(Request $request)
     {
@@ -45,13 +62,15 @@ class ProduitController extends Controller
             ? $request->input('boutique_id')
             : $request->user()->boutique_id;
 
+        $perPage = $request->input('per_page', 15);
+
         $query = Produit::stockFaible()->with('categorie');
 
         if ($boutiqueId) {
             $query->where('boutique_id', $boutiqueId);
         }
 
-        $produits = $query->get();
+        $produits = $query->paginate($perPage);
 
         return response()->json($produits);
     }

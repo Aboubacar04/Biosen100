@@ -9,8 +9,8 @@ use Illuminate\Http\Request;
 class FactureController extends Controller
 {
     /**
-     * 📋 LISTE toutes les factures
-     * Route : GET /api/factures
+     * 📋 LISTE toutes les factures (PAGINÉE)
+     * Route : GET /api/factures?page=1&per_page=15
      */
     public function index(Request $request)
     {
@@ -18,12 +18,28 @@ class FactureController extends Controller
             ? $request->input('boutique_id')
             : $request->user()->boutique_id;
 
-        $factures = Facture::whereHas('commande', function($query) use ($boutiqueId) {
-            $query->where('boutique_id', $boutiqueId);
-        })
-            ->with('commande.client')
-            ->orderBy('created_at', 'desc')
-            ->get();
+        $perPage = $request->input('per_page', 15);
+
+        $query = Facture::with(['commande.client', 'commande.employe']);
+
+        if ($boutiqueId) {
+            $query->whereHas('commande', function($q) use ($boutiqueId) {
+                $q->where('boutique_id', $boutiqueId);
+            });
+        }
+
+        // Filtre par date
+        if ($request->input('date')) {
+            $query->whereDate('created_at', $request->input('date'));
+        }
+
+        // Filtre par mois
+        if ($request->input('mois') && $request->input('annee')) {
+            $query->whereMonth('created_at', $request->input('mois'))
+                ->whereYear('created_at', $request->input('annee'));
+        }
+
+        $factures = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         return response()->json($factures);
     }
@@ -35,34 +51,31 @@ class FactureController extends Controller
     public function show(Facture $facture)
     {
         $facture->load([
-            'commande.boutique',
             'commande.client',
             'commande.employe',
-            'commande.produits'
+            'commande.livreur',
+            'commande.produits',
+            'commande.boutique'
         ]);
 
         return response()->json($facture);
     }
 
     /**
-     * 🔍 RECHERCHER une facture par numéro
-     * Route : GET /api/factures/search?numero=FAC-2026-00001
+     * 👁️ AFFICHER la facture d'une commande
+     * Route : GET /api/commandes/{id}/facture
      */
-    public function search(Request $request)
+    public function parCommande($commandeId)
     {
-        $request->validate([
-            'numero' => 'required|string',
-        ]);
-
-        $facture = Facture::where('numero_facture', $request->numero)
-            ->with('commande.client')
-            ->first();
-
-        if (!$facture) {
-            return response()->json([
-                'message' => 'Facture non trouvée'
-            ], 404);
-        }
+        $facture = Facture::where('commande_id', $commandeId)
+            ->with([
+                'commande.client',
+                'commande.employe',
+                'commande.livreur',
+                'commande.produits',
+                'commande.boutique'
+            ])
+            ->firstOrFail();
 
         return response()->json($facture);
     }
