@@ -174,8 +174,75 @@ class ClientController extends Controller
      */
     public function show(Client $client)
     {
+        // Charger les relations
         $client->load('boutique', 'commandes');
-        return response()->json($client);
+
+        // ═══════════════════════════════════════════════════════
+        // 📊 CALCUL DES STATISTIQUES
+        // ═══════════════════════════════════════════════════════
+
+        $commandes = $client->commandes;
+
+        // Stats générales
+        $totalCommandes = $commandes->count();
+        $commandesValidees = $commandes->where('statut', 'validee');
+        $commandesEnCours = $commandes->where('statut', 'en_cours');
+        $commandesAnnulees = $commandes->where('statut', 'annulee');
+
+        // Total dépensé (seulement commandes validées)
+        $totalDepense = $commandesValidees->sum(function ($cmd) {
+            return (float) $cmd->total;
+        });
+
+        // Commande moyenne
+        $commandeMoyenne = $commandesValidees->count() > 0
+            ? round($totalDepense / $commandesValidees->count(), 2)
+            : 0;
+
+        // Dernière commande validée
+        $derniereCommande = $commandesValidees
+            ->sortByDesc('date_validation')
+            ->first();
+
+        // ═══════════════════════════════════════════════════════
+        // 📦 FORMATER LA RÉPONSE
+        // ═══════════════════════════════════════════════════════
+
+        return response()->json([
+            'client' => [
+                'id' => $client->id,
+                'nom_complet' => $client->nom_complet,
+                'telephone' => $client->telephone,
+                'email' => $client->email,
+                'adresse' => $client->adresse,
+                'actif' => $client->actif,
+                'boutique_id' => $client->boutique_id,
+                'created_at' => $client->created_at,
+                'updated_at' => $client->updated_at,
+                'boutique' => $client->boutique,
+            ],
+            'statistiques' => [
+                'total_commandes' => $totalCommandes,
+                'total_depense' => $totalDepense,
+                'commande_moyenne' => $commandeMoyenne,
+                'derniere_commande' => $derniereCommande ? $derniereCommande->date_validation : null,
+                'commandes_validees' => $commandesValidees->count(),
+                'commandes_en_cours' => $commandesEnCours->count(),
+                'commandes_annulees' => $commandesAnnulees->count(),
+            ],
+            'commandes' => $commandes->map(function ($cmd) {
+                return [
+                    'id' => $cmd->id,
+                    'numero_commande' => $cmd->numero_commande,
+                    'statut' => $cmd->statut,
+                    'total' => $cmd->total,
+                    'type_commande' => $cmd->type_commande,
+                    'notes' => $cmd->notes,
+                    'date_commande' => $cmd->date_commande,
+                    'created_at' => $cmd->created_at,
+                ];
+            })->values()->all(),
+        ]);
     }
 
     /**

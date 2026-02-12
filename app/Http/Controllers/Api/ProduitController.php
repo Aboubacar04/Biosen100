@@ -13,6 +13,10 @@ class ProduitController extends Controller
      * Liste des produits avec recherche et pagination
      * GET /api/produits?boutique_id=&categorie_id=&actif=&search=&per_page=&page=
      */
+    /**
+     * Liste des produits avec recherche et pagination
+     * GET /api/produits?boutique_id=&categorie_id=&actif=&search=&per_page=&page=
+     */
     public function index(Request $request)
     {
         $boutiqueId = $request->user()->isAdmin()
@@ -21,7 +25,7 @@ class ProduitController extends Controller
 
         $search = $request->input('search', '');
         $categorieId = $request->input('categorie_id');
-        $actif = $request->input('actif');
+        $actif = $request->input('actif'); // Ne pas mettre de valeur par défaut
         $perPage = $request->input('per_page', 15);
 
         $query = Produit::with('categorie');
@@ -36,10 +40,11 @@ class ProduitController extends Controller
             $query->where('categorie_id', $categorieId);
         }
 
-        // Filtre actif
-        if ($actif !== null) {
+        // ✅ CORRECTION : Filtre actif SEULEMENT si le paramètre est envoyé
+        if ($actif !== null && $actif !== '') {
             $query->where('actif', (bool) $actif);
         }
+        // Si actif n'est pas envoyé → on affiche TOUS les produits (actifs + inactifs)
 
         // 🔍 RECHERCHE par nom
         if ($search) {
@@ -120,7 +125,13 @@ class ProduitController extends Controller
      */
     public function show(Produit $produit)
     {
-        return response()->json($produit->load('categorie'));
+        // ✅ CHARGER TOUTES LES RELATIONS
+        $produit->load([
+            'categorie',        // Catégorie du produit
+            'boutique',         // Boutique propriétaire
+        ]);
+
+        return response()->json($produit);
     }
 
     /**

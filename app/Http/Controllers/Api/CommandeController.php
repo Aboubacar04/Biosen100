@@ -115,9 +115,9 @@ class CommandeController extends Controller
 
         if ($boutiqueId) $query->where('boutique_id', $boutiqueId);
 
-        // Calcul des totaux AVANT pagination
+        // ✅ CORRECTION : Somme totale = SEULEMENT les validées
         $totalCommandes = (clone $query)->count();
-        $sommeTotal     = (clone $query)->sum('total');
+        $sommeTotal     = (clone $query)->where('statut', 'validee')->sum('total'); // ✅ CORRIGÉ
         $totalValidees  = (clone $query)->where('statut', 'validee')->sum('total');
         $nbAnnulees     = (clone $query)->where('statut', 'annulee')->count();
         $nbEnCours      = (clone $query)->where('statut', 'en_cours')->count();
@@ -128,7 +128,7 @@ class CommandeController extends Controller
             'resume' => [
                 'date'            => $request->date,
                 'total_commandes' => $totalCommandes,
-                'somme_totale'    => $sommeTotal,
+                'somme_totale'    => $sommeTotal, // ✅ Maintenant = total_validees
                 'total_validees'  => $totalValidees,
                 'nb_en_cours'     => $nbEnCours,
                 'nb_annulees'     => $nbAnnulees,
