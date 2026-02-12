@@ -121,13 +121,17 @@ Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(
     // ----------------------------------------
     // 👥 CLIENTS
     // ----------------------------------------
+    // Dans routes/api.php
+
     Route::prefix('clients')->group(function () {
-        Route::get('/',            [ClientController::class, 'index']);
-        Route::get('/search',      [ClientController::class, 'search']);
-        Route::post('/',           [ClientController::class, 'store']);
-        Route::get('/{client}',    [ClientController::class, 'show']);
-        Route::put('/{client}',    [ClientController::class, 'update']);
-        Route::delete('/{client}', [ClientController::class, 'destroy']);
+        Route::get('/',                      [ClientController::class, 'index']);
+        Route::get('/autocomplete',          [ClientController::class, 'autocomplete']);          // NOUVEAU
+        Route::get('/search',                [ClientController::class, 'search']);
+        Route::get('/recherche-telephone',   [ClientController::class, 'rechercherParTelephone']); // CORRIGÉ
+        Route::post('/',                     [ClientController::class, 'store']);
+        Route::get('/{client}',              [ClientController::class, 'show']);
+        Route::put('/{client}',              [ClientController::class, 'update']);
+        Route::delete('/{client}',           [ClientController::class, 'destroy']);
     });
 
     // ----------------------------------------
@@ -146,6 +150,7 @@ Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(
         // GET /api/commandes/employe/{employe_id}/du-jour
         // GET /api/commandes/employe/{employe_id}/du-jour?date=2026-02-09
         Route::get('/employe/{employe_id}/du-jour', [CommandeController::class, 'commandesDuJourEmploye']);
+        Route::get('/commandes/search', [CommandeController::class, 'search']);
 
         // CRUD de base
         Route::get('/',    [CommandeController::class, 'index']);
@@ -201,3 +206,27 @@ Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(
         Route::get('/stats-employe/{employe}',    [DashboardController::class, 'statsEmploye']);
     });
 });
+
+
+Route::get('/debug-user', function () {
+    $user = auth()->user();
+
+    return response()->json([
+        'user_id'       => $user->id,
+        'user_role'     => $user->role,
+        'user_email'    => $user->email,
+
+        // ── Tester la relation directe
+        'employe_relation'    => $user->employe,
+
+        // ── Chercher manuellement avec différents noms de FK possibles
+        'search_by_user_id'       => \App\Models\Employe::where('user_id',  $user->id)->first(),
+        'search_by_utilisateur_id'=> \App\Models\Employe::where('utilisateur_id', $user->id)->first(),
+
+        // ── Voir toutes les colonnes de la table employes
+        'employes_columns'    => \Illuminate\Support\Facades\Schema::getColumnListing('employes'),
+
+        // ── Voir les 5 premiers employés pour comprendre la structure
+        'employes_sample'     => \App\Models\Employe::limit(5)->get(),
+    ]);
+})->middleware('auth:sanctum');

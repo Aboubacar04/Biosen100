@@ -137,78 +137,7 @@ class CommandeController extends Controller
         ]);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 👷 COMMANDES DU JOUR D'UN EMPLOYÉ  ← NOUVELLE MÉTHODE
-    // GET /api/commandes/employe/{employe_id}/du-jour
-    // Paramètre optionnel : ?date=2026-02-10  (aujourd'hui par défaut)
-    // Paramètre optionnel : ?boutique_id=  (admin uniquement)
-    // ─────────────────────────────────────────────────────────────────────────
-    public function commandesDuJourEmploye(Request $request, $employeId)
-    {
-        if ($request->has('date')) {
-            $request->validate(['date' => 'date_format:Y-m-d']);
-        }
 
-        $date = $request->input('date', Carbon::today()->format('Y-m-d'));
-
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
-
-        $query = Commande::where('employe_id', $employeId)
-            ->whereDate('date_commande', $date)   // ✅ CORRIGÉ
-            ->with(['client', 'livreur', 'produits', 'employe']);
-
-        if ($boutiqueId) $query->where('boutique_id', $boutiqueId);
-
-        $commandes = $query->orderBy('date_commande', 'desc')->get();
-
-        $validees = $commandes->where('statut', 'validee');
-        $enCours  = $commandes->where('statut', 'en_cours');
-        $annulees = $commandes->where('statut', 'annulee');
-
-        return response()->json([
-            'employe' => $commandes->isNotEmpty() ? [
-                'id'        => $commandes->first()->employe->id,
-                'nom'       => $commandes->first()->employe->nom,
-                'telephone' => $commandes->first()->employe->telephone,
-            ] : null,
-            'date'   => $date,
-            'resume' => [
-                'total_commandes'    => $commandes->count(),
-                'commandes_validees' => $validees->count(),
-                'commandes_en_cours' => $enCours->count(),
-                'commandes_annulees' => $annulees->count(),
-                'total_ventes'       => round($validees->sum('total'), 2),
-            ],
-            'commandes' => $commandes->map(function ($commande) {
-                return [
-                    'id'            => $commande->id,
-                    'statut'        => $commande->statut,
-                    'total'         => $commande->total,
-                    'type_commande' => $commande->type_commande,
-                    'notes'         => $commande->notes,
-                    'heure'         => $commande->created_at->format('H:i'),
-                    'client'        => $commande->client ? [
-                        'id'          => $commande->client->id,
-                        'nom_complet' => $commande->client->nom_complet,
-                        'telephone'   => $commande->client->telephone,
-                    ] : null,
-                    'livreur'       => $commande->livreur ? [
-                        'id'  => $commande->livreur->id,
-                        'nom' => $commande->livreur->nom,
-                    ] : null,
-                    'produits'      => $commande->produits->map(fn($p) => [
-                        'id'            => $p->id,
-                        'nom'           => $p->nom,
-                        'quantite'      => $p->pivot->quantite,
-                        'prix_unitaire' => $p->pivot->prix_unitaire,
-                        'sous_total'    => $p->pivot->sous_total,
-                    ]),
-                ];
-            }),
-        ]);
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // ➕ CRÉER UNE COMMANDE
@@ -216,8 +145,16 @@ class CommandeController extends Controller
     // ─────────────────────────────────────────────────────────────────────────
     public function store(Request $request)
     {
+        $user = auth()->user();
+
+        // ── Admin → boutique_id libre depuis le request
+        // ── Gérant → boutique_id forcé depuis son propre profil, on ignore le request
+        $boutiqueId = $user->role === 'admin'
+            ? $request->boutique_id
+            : $user->boutique_id;
+
         $request->validate([
-            'boutique_id'           => 'required|exists:boutiques,id',
+            'boutique_id'           => $user->role === 'admin' ? 'required|exists:boutiques,id' : 'nullable',
             'client_id'             => 'nullable|exists:clients,id',
             'employe_id'            => 'required|exists:employes,id',
             'livreur_id'            => 'nullable|exists:livreurs,id',
@@ -231,7 +168,7 @@ class CommandeController extends Controller
         DB::beginTransaction();
         try {
             $commande = Commande::create([
-                'boutique_id'   => $request->boutique_id,
+                'boutique_id'   => $boutiqueId,  // ← jamais depuis le request pour un gérant
                 'client_id'     => $request->client_id,
                 'employe_id'    => $request->employe_id,
                 'livreur_id'    => $request->livreur_id,
@@ -426,5 +363,32 @@ class CommandeController extends Controller
         $commande->delete();
 
         return response()->json(['message' => 'Commande supprimée avec succès']);
+    }
+
+    // Recherche commande par référence ou téléphone client
+    public function search(Request $request)
+    {
+        $search = $request->input('search', '');
+        $boutiqueId = $request->user()->isAdmin()
+            ? $request->input('boutique_id')
+            : $request->user()->boutique_id;
+
+        $query = Commande::query();
+
+        if ($boutiqueId) {
+            $query->where('boutique_id', $boutiqueId);
+        }
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('numero_commande', 'like', '%' . $search . '%')
+                    ->orWhereHas('client', function ($clientQuery) use ($search) {
+                        $clientQuery->where('telephone', 'like', '%' . $search . '%')
+                            ->orWhere('nom_complet', 'like', '%' . $search . '%');
+                    });
+            });
+        }
+
+        return response()->json($query->with(['client', 'employe', 'livreur'])->latest()->paginate(15));
     }
 }

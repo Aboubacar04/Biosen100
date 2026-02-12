@@ -346,9 +346,12 @@ class DashboardController extends Controller
     public function statsEmploye(Request $request, $employeId)
     {
         $periode = $request->input('periode', 'mois');
+        $perPage = $request->input('per_page', 15);
+        $search = $request->input('search', '');
 
         $query = Commande::validees()->where('employe_id', $employeId);
 
+        // Filtrer par période
         switch ($periode) {
             case 'jour':
                 $query->whereDate('date_commande', today());
@@ -365,12 +368,28 @@ class DashboardController extends Controller
                 break;
         }
 
-        $stats = [
-            'nombre_commandes' => $query->count(),
-            'total_ventes' => $query->sum('total'),
-            'commandes' => $query->with('client')->latest()->take(10)->get(),
-        ];
+        // Recherche
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('numero_commande', 'like', '%' . $search . '%')
+                    ->orWhereHas('client', function ($clientQuery) use ($search) {
+                        $clientQuery->where('nom_complet', 'like', '%' . $search . '%')
+                            ->orWhere('telephone', 'like', '%' . $search . '%');
+                    });
+            });
+        }
 
-        return response()->json($stats);
+        // Calcul stats (avant pagination)
+        $totalCommandes = $query->count();
+        $totalVentes = $query->sum('total');
+
+        // Pagination
+        $commandes = $query->with('client')->latest('date_commande')->paginate($perPage);
+
+        return response()->json([
+            'nombre_commandes' => $totalCommandes,
+            'total_ventes' => $totalVentes,
+            'commandes' => $commandes,
+        ]);
     }
 }
