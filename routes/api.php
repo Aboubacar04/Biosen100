@@ -139,40 +139,40 @@ Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(
     // ⚠️  Les routes statiques DOIVENT être déclarées AVANT les routes dynamiques {commande}
     // ----------------------------------------
     Route::prefix('commandes')->group(function () {
+    // Routes statiques
+    Route::get('/en-cours',   [CommandeController::class, 'enCours']);
+    Route::get('/validees',   [CommandeController::class, 'validees']);
+    Route::get('/annulees',   [CommandeController::class, 'annulees']);
+    Route::get('/historique', [CommandeController::class, 'historique']);
+    Route::get('/employe/{employe_id}/du-jour', [CommandeController::class, 'commandesDuJourEmploye']);
+    Route::get('/search', [CommandeController::class, 'search']); // ✅ Corrigé
 
-        // Routes statiques (ordre important !)
-        Route::get('/en-cours',   [CommandeController::class, 'enCours']);
-        Route::get('/validees',   [CommandeController::class, 'validees']);
-        Route::get('/annulees',   [CommandeController::class, 'annulees']);
-        Route::get('/historique', [CommandeController::class, 'historique']);
+    // CRUD
+    Route::get('/',    [CommandeController::class, 'index']);
+    Route::post('/',   [CommandeController::class, 'store']);
 
-        // ✅ NOUVELLE ROUTE — Commandes du jour d'un employé
-        // GET /api/commandes/employe/{employe_id}/du-jour
-        // GET /api/commandes/employe/{employe_id}/du-jour?date=2026-02-09
-        Route::get('/employe/{employe_id}/du-jour', [CommandeController::class, 'commandesDuJourEmploye']);
-        Route::get('/commandes/search', [CommandeController::class, 'search']);
+    // Routes dynamiques
+    Route::get('/{commande}',          [CommandeController::class, 'show']);
+    Route::put('/{commande}',          [CommandeController::class, 'update']);
+    Route::delete('/{commande}',       [CommandeController::class, 'destroy']);
+    Route::post('/{commande}/valider', [CommandeController::class, 'valider']);
+    Route::post('/{commande}/annuler', [CommandeController::class, 'annuler']);
+});
 
-        // CRUD de base
-        Route::get('/',    [CommandeController::class, 'index']);
-        Route::post('/',   [CommandeController::class, 'store']);
+   // ──────────────────────────────────────────────────────────────
+// 🧾 FACTURES
+// ──────────────────────────────────────────────────────────────
+Route::prefix('factures')->group(function () {
+    Route::get('/aujourdhui',     [FactureController::class, 'aujourdhui']);
+    Route::get('/semaine',         [FactureController::class, 'semaine']);
+    Route::get('/mois',            [FactureController::class, 'mois']);
+    Route::get('/annee',           [FactureController::class, 'annee']);
+    Route::get('/search',          [FactureController::class, 'search']);
+    Route::get('/',                [FactureController::class, 'index']);
+    Route::get('/{facture}',       [FactureController::class, 'show']);
+});
 
-        // Routes dynamiques avec {commande}
-        Route::get('/{commande}',              [CommandeController::class, 'show']);
-        Route::put('/{commande}',              [CommandeController::class, 'update']);
-        Route::delete('/{commande}',           [CommandeController::class, 'destroy']);
-        Route::post('/{commande}/valider',     [CommandeController::class, 'valider']);
-        Route::post('/{commande}/annuler',     [CommandeController::class, 'annuler']);
-    });
-
-    // ----------------------------------------
-    // 🧾 FACTURES
-    // ----------------------------------------
-    Route::prefix('factures')->group(function () {
-        Route::get('/',           [FactureController::class, 'index']);
-        Route::get('/search',     [FactureController::class, 'search']);
-        Route::get('/{facture}',  [FactureController::class, 'show']);
-    });
-
+Route::get('/commandes/{commande}/facture', [FactureController::class, 'parCommande']);
     // ----------------------------------------
     // 💰 DÉPENSES
     // ----------------------------------------

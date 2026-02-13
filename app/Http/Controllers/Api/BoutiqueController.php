@@ -68,7 +68,14 @@ class BoutiqueController extends Controller
      */
     public function show(Boutique $boutique)
     {
-        $boutique->load(['produits', 'employes', 'livreurs', 'clients']);
+        // Charger les relations SANS les clients (on va les paginer)
+        $boutique->load(['produits', 'employes', 'livreurs']);
+
+        // Ajouter les clients paginés (15 par page par défaut)
+        $perPage = request()->get('per_page', 15);
+        $boutique->clients_paginated = $boutique->clients()
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage);
 
         return response()->json($boutique);
     }
