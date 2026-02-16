@@ -56,93 +56,106 @@ class EmployeController extends Controller
     }
 
     /**
-     * 👁️ AFFICHER UN EMPLOYÉ AVEC STATISTIQUES ET COMMANDES
-     * GET /api/employes/{id}
-     */
-    public function show(Employe $employe)
-    {
-        // Charger les relations
-        $employe->load('boutique', 'commandes');
+ * 👁️ AFFICHER UN EMPLOYÉ AVEC STATISTIQUES ET COMMANDES
+ * GET /api/employes/{id}
+ */
+public function show(Request $request, Employe $employe)
+{
+    $employe->load('boutique');
 
-        // ═══════════════════════════════════════════════════════
-        // 📊 CALCUL DES STATISTIQUES
-        // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════
+    // 📅 FILTRES DATE
+    // ═══════════════════════════════════════════════════════
+    $dateDebut = $request->query('date_debut');
+    $dateFin = $request->query('date_fin');
 
-        $commandes = $employe->commandes;
+    // Commandes de base (pour stats)
+    $commandesQuery = $employe->commandes()->with('client');
 
-        // Stats générales
-        $totalCommandes = $commandes->count();
-        $commandesValidees = $commandes->where('statut', 'validee');
-        $commandesEnCours = $commandes->where('statut', 'en_cours');
-        $commandesAnnulees = $commandes->where('statut', 'annulee');
+    if ($dateDebut) {
+        $commandesQuery->whereDate('created_at', '>=', $dateDebut);
+    }
+    if ($dateFin) {
+        $commandesQuery->whereDate('created_at', '<=', $dateFin);
+    }
 
-        // Total ventes (seulement commandes validées)
-        $totalVentes = $commandesValidees->sum(function ($cmd) {
-            return (float) $cmd->total;
-        });
+    $commandes = $commandesQuery->orderBy('created_at', 'desc')->get();
 
-        // Vente moyenne
-        $venteMoyenne = $commandesValidees->count() > 0
-            ? round($totalVentes / $commandesValidees->count(), 2)
-            : 0;
+    // ═══════════════════════════════════════════════════════
+    // 📊 CALCUL DES STATISTIQUES
+    // ═══════════════════════════════════════════════════════
+    $totalCommandes = $commandes->count();
+    $commandesValidees = $commandes->where('statut', 'validee');
+    $commandesEnCours = $commandes->where('statut', 'en_cours');
+    $commandesAnnulees = $commandes->where('statut', 'annulee');
 
-        // Dernière commande validée
-        $derniereCommande = $commandesValidees
-            ->sortByDesc('date_validation')
-            ->first();
+    $totalVentes = $commandesValidees->sum(fn($cmd) => (float) $cmd->total);
 
-        // Ventes du jour (aujourd'hui)
-        $today = now()->toDateString();
-        $ventesJour = $commandes
-            ->where('statut', 'validee')
-            ->filter(function ($cmd) use ($today) {
-                return $cmd->date_validation &&
-                    \Carbon\Carbon::parse($cmd->date_validation)->toDateString() === $today;
-            })
-            ->sum(function ($cmd) {
-                return (float) $cmd->total;
-            });
+    $venteMoyenne = $commandesValidees->count() > 0
+        ? round($totalVentes / $commandesValidees->count(), 2)
+        : 0;
 
-        // Ventes du mois (mois en cours)
-        $currentMonth = now()->format('Y-m');
-        $ventesMois = $commandes
-            ->where('statut', 'validee')
-            ->filter(function ($cmd) use ($currentMonth) {
-                return $cmd->date_validation &&
-                    \Carbon\Carbon::parse($cmd->date_validation)->format('Y-m') === $currentMonth;
-            })
-            ->sum(function ($cmd) {
-                return (float) $cmd->total;
-            });
+    $derniereCommande = $commandesValidees
+        ->sortByDesc('date_validation')
+        ->first();
 
-        // ═══════════════════════════════════════════════════════
-        // 📦 FORMATER LA RÉPONSE
-        // ═══════════════════════════════════════════════════════
+    // Ventes du jour
+    $today = now()->toDateString();
+    $ventesJour = $commandes
+        ->where('statut', 'validee')
+        ->filter(fn($cmd) => $cmd->date_validation &&
+            \Carbon\Carbon::parse($cmd->date_validation)->toDateString() === $today)
+        ->sum(fn($cmd) => (float) $cmd->total);
 
-        return response()->json([
-            'employe' => [
-                'id' => $employe->id,
-                'nom' => $employe->nom,
-                'telephone' => $employe->telephone,
-                'photo' => $employe->photo ? asset('storage/' . $employe->photo) : null,
-                'actif' => $employe->actif,
-                'boutique_id' => $employe->boutique_id,
-                'created_at' => $employe->created_at,
-                'updated_at' => $employe->updated_at,
-                'boutique' => $employe->boutique,
-            ],
-            'statistiques' => [
-                'total_commandes' => $totalCommandes,
-                'total_ventes' => $totalVentes,
-                'vente_moyenne' => $venteMoyenne,
-                'derniere_commande' => $derniereCommande ? $derniereCommande->date_validation : null,
-                'commandes_validees' => $commandesValidees->count(),
-                'commandes_en_cours' => $commandesEnCours->count(),
-                'commandes_annulees' => $commandesAnnulees->count(),
-                'ventes_jour' => $ventesJour,
-                'ventes_mois' => $ventesMois,
-            ],
-            'commandes' => $commandes->map(function ($cmd) {
+    // Ventes du mois
+    $currentMonth = now()->format('Y-m');
+    $ventesMois = $commandes
+        ->where('statut', 'validee')
+        ->filter(fn($cmd) => $cmd->date_validation &&
+            \Carbon\Carbon::parse($cmd->date_validation)->format('Y-m') === $currentMonth)
+        ->sum(fn($cmd) => (float) $cmd->total);
+
+    // ═══════════════════════════════════════════════════════
+    // 📦 PAGINATION COMMANDES
+    // ═══════════════════════════════════════════════════════
+    $perPage = (int) $request->query('commandes_per_page', 5);
+    $page = (int) $request->query('commandes_page', 1);
+
+    $commandesPaginated = $employe->commandes()
+        ->with('client')
+        ->when($dateDebut, fn($q) => $q->whereDate('created_at', '>=', $dateDebut))
+        ->when($dateFin, fn($q) => $q->whereDate('created_at', '<=', $dateFin))
+        ->orderBy('created_at', 'desc')
+        ->paginate($perPage, ['*'], 'page', $page);
+
+    // ═══════════════════════════════════════════════════════
+    // 📤 RÉPONSE
+    // ═══════════════════════════════════════════════════════
+    return response()->json([
+        'employe' => [
+            'id' => $employe->id,
+            'nom' => $employe->nom,
+            'telephone' => $employe->telephone,
+            'photo' => $employe->photo ? asset('storage/' . $employe->photo) : null,
+            'actif' => $employe->actif,
+            'boutique_id' => $employe->boutique_id,
+            'created_at' => $employe->created_at,
+            'updated_at' => $employe->updated_at,
+            'boutique' => $employe->boutique,
+        ],
+        'statistiques' => [
+            'total_commandes' => $totalCommandes,
+            'total_ventes' => $totalVentes,
+            'vente_moyenne' => $venteMoyenne,
+            'derniere_commande' => $derniereCommande?->date_validation,
+            'commandes_validees' => $commandesValidees->count(),
+            'commandes_en_cours' => $commandesEnCours->count(),
+            'commandes_annulees' => $commandesAnnulees->count(),
+            'ventes_jour' => $ventesJour,
+            'ventes_mois' => $ventesMois,
+        ],
+        'commandes' => [
+            'data' => $commandesPaginated->map(function ($cmd) {
                 return [
                     'id' => $cmd->id,
                     'numero_commande' => $cmd->numero_commande,
@@ -158,10 +171,14 @@ class EmployeController extends Controller
                         'telephone' => $cmd->client->telephone,
                     ] : null,
                 ];
-            })->values()->all(),
-        ]);
-    }
-
+            }),
+            'current_page' => $commandesPaginated->currentPage(),
+            'last_page' => $commandesPaginated->lastPage(),
+            'total' => $commandesPaginated->total(),
+            'per_page' => $commandesPaginated->perPage(),
+        ],
+    ]);
+}
     /**
      * ➕ CRÉER UN EMPLOYÉ
      * POST /api/employes (avec photo)

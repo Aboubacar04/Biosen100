@@ -5,12 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Livreur;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Carbon\Carbon;
 
 class LivreurController extends Controller
 {
     /**
      * 📋 LISTE DES LIVREURS AVEC PAGINATION
-     * GET /api/livreurs?boutique_id=&actif=&disponible=&search=&per_page=&page=
      */
     public function index(Request $request)
     {
@@ -24,22 +25,15 @@ class LivreurController extends Controller
 
         $query = Livreur::query();
 
-        // Filtre boutique
         if ($boutiqueId) {
             $query->where('boutique_id', $boutiqueId);
         }
-
-        // Filtre actif
         if ($actif !== null) {
             $query->where('actif', $actif == '1');
         }
-
-        // Filtre disponible
         if ($disponible !== null) {
             $query->where('disponible', $disponible == '1');
         }
-
-        // 🔍 RECHERCHE par nom OU téléphone
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('nom', 'like', '%' . $search . '%')
@@ -53,7 +47,6 @@ class LivreurController extends Controller
 
     /**
      * 🚚 LIVREURS DISPONIBLES
-     * GET /api/livreurs/disponibles?boutique_id=
      */
     public function disponibles(Request $request)
     {
@@ -71,89 +64,124 @@ class LivreurController extends Controller
     }
 
     /**
-     * 👁️ AFFICHER UN LIVREUR AVEC STATISTIQUES ET LIVRAISONS
-     * GET /api/livreurs/{id}
+     * 👁️ AFFICHER UN LIVREUR — STATS FILTRÉES PAR DATE + COMMANDES PAGINÉES
+     *
+     * GET /api/livreurs/{id}?date_debut=2025-01-01&date_fin=2025-12-31&commandes_page=1&commandes_per_page=5
      */
-    public function show(Livreur $livreur)
+    public function show(Request $request, Livreur $livreur)
     {
-        // Charger les relations
-        $livreur->load('boutique', 'commandes');
+        $livreur->load('boutique');
 
-        // ═══════════════════════════════════════════════════════
-        // 📊 CALCUL DES STATISTIQUES
-        // ═══════════════════════════════════════════════════════
+        // ═══ FILTRES DATE ═══
+        $dateDebut = $request->input('date_debut');
+        $dateFin   = $request->input('date_fin');
 
-        $commandes = $livreur->commandes;
+        // ═══ STATISTIQUES (sur toutes les commandes filtrées par date) ═══
+        $statsQuery = $livreur->commandes();
+        if ($dateDebut) {
+            $statsQuery->whereDate('created_at', '>=', $dateDebut);
+        }
+        if ($dateFin) {
+            $statsQuery->whereDate('created_at', '<=', $dateFin);
+        }
+        $allFiltered = $statsQuery->get();
 
-        // Stats générales
-        $totalLivraisons = $commandes->count();
-        $livraisonsValidees = $commandes->where('statut', 'validee');
-        $livraisonsEnCours = $commandes->where('statut', 'en_cours');
-        $livraisonsAnnulees = $commandes->where('statut', 'annulee');
+        $totalLivraisons    = $allFiltered->count();
+        $livraisonsValidees = $allFiltered->where('statut', 'validee');
+        $livraisonsEnCours  = $allFiltered->where('statut', 'en_cours');
+        $livraisonsAnnulees = $allFiltered->where('statut', 'annulee');
 
-        // Montant total livré (seulement commandes validées)
-        $montantTotalLivre = $livraisonsValidees->sum(function ($cmd) {
-            return (float) $cmd->total;
-        });
+        $montantTotalLivre = $livraisonsValidees->sum(fn($cmd) => (float) $cmd->total);
 
-        // Livraison moyenne
         $livraisonMoyenne = $livraisonsValidees->count() > 0
             ? round($montantTotalLivre / $livraisonsValidees->count(), 2)
             : 0;
 
-        // Dernière livraison validée
-        $derniereLivraison = $livraisonsValidees
-            ->sortByDesc('date_validation')
-            ->first();
+        $derniereLivraison = $livraisonsValidees->sortByDesc('date_validation')->first();
 
-        // ═══════════════════════════════════════════════════════
-        // 📦 FORMATER LA RÉPONSE
-        // ═══════════════════════════════════════════════════════
+        // Ventes du jour
+        $today = now()->toDateString();
+        $ventesJour = $allFiltered->where('statut', 'validee')
+            ->filter(fn($cmd) => $cmd->date_validation && Carbon::parse($cmd->date_validation)->toDateString() === $today)
+            ->sum(fn($cmd) => (float) $cmd->total);
 
+        // Ventes du mois
+        $currentMonth = now()->format('Y-m');
+        $ventesMois = $allFiltered->where('statut', 'validee')
+            ->filter(fn($cmd) => $cmd->date_validation && Carbon::parse($cmd->date_validation)->format('Y-m') === $currentMonth)
+            ->sum(fn($cmd) => (float) $cmd->total);
+
+        // ═══ COMMANDES PAGINÉES (même filtre date) ═══
+        $commandesQuery = $livreur->commandes()
+            ->with('client')
+            ->orderBy('created_at', 'desc');
+
+        if ($dateDebut) {
+            $commandesQuery->whereDate('created_at', '>=', $dateDebut);
+        }
+        if ($dateFin) {
+            $commandesQuery->whereDate('created_at', '<=', $dateFin);
+        }
+
+        $perPage  = (int) $request->input('commandes_per_page', 5);
+        $page     = (int) $request->input('commandes_page', 1);
+        $paginated = $commandesQuery->paginate($perPage, ['*'], 'commandes_page', $page);
+
+        // ═══ RÉPONSE ═══
         return response()->json([
             'livreur' => [
-                'id' => $livreur->id,
-                'nom' => $livreur->nom,
-                'telephone' => $livreur->telephone,
-                'disponible' => $livreur->disponible,
-                'actif' => $livreur->actif,
+                'id'          => $livreur->id,
+                'nom'         => $livreur->nom,
+                'telephone'   => $livreur->telephone,
+                'disponible'  => $livreur->disponible,
+                'photo'       => $livreur->photo,
+                'actif'       => $livreur->actif,
                 'boutique_id' => $livreur->boutique_id,
-                'created_at' => $livreur->created_at,
-                'updated_at' => $livreur->updated_at,
-                'boutique' => $livreur->boutique,
+                'created_at'  => $livreur->created_at,
+                'updated_at'  => $livreur->updated_at,
+                'boutique'    => $livreur->boutique,
             ],
             'statistiques' => [
-                'total_livraisons' => $totalLivraisons,
+                'total_livraisons'    => $totalLivraisons,
                 'montant_total_livre' => $montantTotalLivre,
-                'livraison_moyenne' => $livraisonMoyenne,
-                'derniere_livraison' => $derniereLivraison ? $derniereLivraison->date_validation : null,
+                'livraison_moyenne'   => $livraisonMoyenne,
+                'derniere_livraison'  => $derniereLivraison ? $derniereLivraison->date_validation : null,
                 'livraisons_validees' => $livraisonsValidees->count(),
                 'livraisons_en_cours' => $livraisonsEnCours->count(),
                 'livraisons_annulees' => $livraisonsAnnulees->count(),
+                'ventes_jour'         => $ventesJour,
+                'ventes_mois'         => $ventesMois,
             ],
-            'commandes' => $commandes->map(function ($cmd) {
-                return [
-                    'id' => $cmd->id,
-                    'numero_commande' => $cmd->numero_commande,
-                    'statut' => $cmd->statut,
-                    'total' => $cmd->total,
-                    'type_commande' => $cmd->type_commande,
-                    'notes' => $cmd->notes,
-                    'date_commande' => $cmd->date_commande,
-                    'created_at' => $cmd->created_at,
-                    'client' => $cmd->client ? [
-                        'id' => $cmd->client->id,
-                        'nom_complet' => $cmd->client->nom_complet,
-                        'telephone' => $cmd->client->telephone,
-                    ] : null,
-                ];
-            })->values()->all(),
+            'commandes' => [
+                'data' => $paginated->map(function ($cmd) {
+                    return [
+                        'id'               => $cmd->id,
+                        'numero_commande'  => $cmd->numero_commande,
+                        'statut'           => $cmd->statut,
+                        'total'            => $cmd->total,
+                        'type_commande'    => $cmd->type_commande,
+                        'notes'            => $cmd->notes,
+                        'date_commande'    => $cmd->date_commande,
+                        'created_at'       => $cmd->created_at,
+                        'client'           => $cmd->client ? [
+                            'id'           => $cmd->client->id,
+                            'nom_complet'  => $cmd->client->nom_complet,
+                            'telephone'    => $cmd->client->telephone,
+                        ] : null,
+                    ];
+                })->values()->all(),
+                'current_page' => $paginated->currentPage(),
+                'last_page'    => $paginated->lastPage(),
+                'per_page'     => $paginated->perPage(),
+                'total'        => $paginated->total(),
+                'from'         => $paginated->firstItem(),
+                'to'           => $paginated->lastItem(),
+            ],
         ]);
     }
 
     /**
      * ➕ CRÉER UN LIVREUR
-     * POST /api/livreurs
      */
     public function store(Request $request)
     {
@@ -163,16 +191,24 @@ class LivreurController extends Controller
         $request->validate([
             'nom'         => 'required|string|max:255',
             'telephone'   => 'required|string|max:20',
+            'photo'       => 'nullable|image|max:2048',
             'boutique_id' => $user->isAdmin() ? 'required|exists:boutiques,id' : 'nullable',
         ]);
 
-        $livreur = Livreur::create([
+        $data = [
             'nom'         => $request->nom,
             'telephone'   => $request->telephone,
             'boutique_id' => $boutiqueId,
             'disponible'  => true,
             'actif'       => true,
-        ]);
+        ];
+
+        if ($request->hasFile('photo')) {
+            $path = $request->file('photo')->store('livreurs', 'public');
+            $data['photo'] = $path;
+        }
+
+        $livreur = Livreur::create($data);
 
         return response()->json([
             'message' => 'Livreur créé avec succès',
@@ -182,7 +218,6 @@ class LivreurController extends Controller
 
     /**
      * ✏️ MODIFIER UN LIVREUR
-     * PUT /api/livreurs/{id}
      */
     public function update(Request $request, Livreur $livreur)
     {
@@ -195,11 +230,22 @@ class LivreurController extends Controller
         $request->validate([
             'nom'        => 'sometimes|string|max:255',
             'telephone'  => 'sometimes|string|max:20',
+            'photo'      => 'nullable|image|max:2048',
             'disponible' => 'sometimes|boolean',
             'actif'      => 'sometimes|boolean',
         ]);
 
-        $livreur->update($request->only(['nom', 'telephone', 'disponible', 'actif']));
+        $livreur->fill($request->only(['nom', 'telephone', 'disponible', 'actif']));
+
+        if ($request->hasFile('photo')) {
+            if ($livreur->photo) {
+                Storage::disk('public')->delete($livreur->photo);
+            }
+            $path = $request->file('photo')->store('livreurs', 'public');
+            $livreur->photo = $path;
+        }
+
+        $livreur->save();
 
         return response()->json([
             'message' => 'Livreur modifié avec succès',
@@ -209,7 +255,6 @@ class LivreurController extends Controller
 
     /**
      * 🗑️ SUPPRIMER UN LIVREUR
-     * DELETE /api/livreurs/{id}
      */
     public function destroy(Request $request, Livreur $livreur)
     {
@@ -219,6 +264,10 @@ class LivreurController extends Controller
             return response()->json(['message' => 'Vous ne pouvez pas supprimer un livreur d\'une autre boutique.'], 403);
         }
 
+        if ($livreur->photo) {
+            Storage::disk('public')->delete($livreur->photo);
+        }
+
         $livreur->delete();
 
         return response()->json(['message' => 'Livreur supprimé avec succès']);
@@ -226,7 +275,6 @@ class LivreurController extends Controller
 
     /**
      * 🔄 BASCULER DISPONIBILITÉ
-     * POST /api/livreurs/{id}/toggle-disponibilite
      */
     public function toggleDisponibilite(Livreur $livreur)
     {

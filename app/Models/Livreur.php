@@ -9,13 +9,14 @@ class Livreur extends Model
 {
     use HasFactory;
 
-    protected $fillable = [
-        'nom',
-        'telephone',
-        'disponible',
-        'boutique_id',
-        'actif',
-    ];
+  protected $fillable = [
+    'nom',
+    'telephone',
+    'photo',
+    'disponible',
+    'boutique_id',
+    'actif',
+];
 
     protected $casts = [
         'disponible' => 'boolean',
