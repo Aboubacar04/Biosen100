@@ -16,21 +16,61 @@ class CommandeController extends Controller
     // GET /api/commandes
     // Paramètres optionnels : ?boutique_id= &statut= &date= &per_page=
     // ─────────────────────────────────────────────────────────────────────────
-    public function index(Request $request)
-    {
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
+   public function index(Request $request)
+{
+    $boutiqueId = $request->user()->isAdmin()
+        ? $request->input('boutique_id')
+        : $request->user()->boutique_id;
 
-        $perPage = $request->input('per_page', 15);
-        $query   = Commande::with(['client', 'employe', 'livreur']);
+    $perPage = $request->input('per_page', 15);
+    $query   = Commande::with(['client', 'employe', 'livreur']);
 
-        if ($boutiqueId)               $query->where('boutique_id', $boutiqueId);
-        if ($request->input('statut')) $query->where('statut', $request->input('statut'));
-        if ($request->input('date'))   $query->whereDate('date_commande', $request->input('date'));
+    if ($boutiqueId)               $query->where('boutique_id', $boutiqueId);
+    if ($request->input('statut')) $query->where('statut', $request->input('statut'));
+    if ($request->input('date'))   $query->whereDate('date_commande', $request->input('date'));
 
-        return response()->json($query->orderBy('created_at', 'desc')->paginate($perPage));
+    // ✅ Filtre par semaine
+    if ($request->input('semaine')) {
+        $date = Carbon::parse($request->input('semaine'));
+        $query->whereBetween('date_commande', [
+            $date->copy()->startOfWeek(),
+            $date->copy()->endOfWeek(),
+        ]);
     }
+
+    // ✅ Filtre par mois/année
+    if ($request->input('mois') && $request->input('annee')) {
+        $query->whereMonth('date_commande', $request->input('mois'))
+              ->whereYear('date_commande', $request->input('annee'));
+    }
+
+    // ✅ Filtre par année seule
+    if ($request->input('annee') && !$request->input('mois')) {
+        $query->whereYear('date_commande', $request->input('annee'));
+    }
+
+    // ✅ Résumé
+    $totalCommandes = (clone $query)->count();
+    $sommeTotal     = (clone $query)->where('statut', 'validee')->sum('total');
+    $totalValidees  = (clone $query)->where('statut', 'validee')->sum('total');
+    $nbValidees     = (clone $query)->where('statut', 'validee')->count();
+    $nbEnCours      = (clone $query)->where('statut', 'en_cours')->count();
+    $nbAnnulees     = (clone $query)->where('statut', 'annulee')->count();
+
+    $commandes = $query->orderBy('created_at', 'desc')->paginate($perPage);
+
+    return response()->json([
+        'resume' => [
+            'total_commandes' => $totalCommandes,
+            'somme_totale'    => $sommeTotal,
+            'total_validees'  => $totalValidees,
+            'nb_validees'     => $nbValidees,
+            'nb_en_cours'     => $nbEnCours,
+            'nb_annulees'     => $nbAnnulees,
+        ],
+        'commandes' => $commandes,
+    ]);
+}
 
     // ─────────────────────────────────────────────────────────────────────────
     // ⏳ COMMANDES EN COURS
