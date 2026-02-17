@@ -23,7 +23,7 @@ class CommandeController extends Controller
         : $request->user()->boutique_id;
 
     $perPage = $request->input('per_page', 15);
-    $query   = Commande::with(['client', 'employe', 'livreur']);
+    $query   = Commande::with(['client', 'employe', 'livreur','boutique']);
 
     if ($boutiqueId)               $query->where('boutique_id', $boutiqueId);
     if ($request->input('statut')) $query->where('statut', $request->input('statut'));
