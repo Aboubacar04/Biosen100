@@ -8,27 +8,18 @@ use Illuminate\Http\Request;
 
 class ClientController extends Controller
 {
-    /**
-     * Liste des clients avec recherche
-     * GET /api/clients?search=&boutique_id=&per_page=
-     */
     public function index(Request $request)
     {
         $search = $request->input('search', '');
         $perPage = $request->input('per_page', 15);
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
 
         $query = Client::withCount('commandes');
 
-        if ($boutiqueId) {
-            $query->where('boutique_id', $boutiqueId);
-        }
-
         if ($search) {
-            $query->where(function ($q) use ($search) {
+            $searchClean = $this->normalizePhone($search);
+            $query->where(function ($q) use ($search, $searchClean) {
                 $q->where('nom_complet', 'like', '%' . $search . '%')
+                    ->orWhere('telephone', 'like', '%' . $searchClean . '%')
                     ->orWhere('telephone', 'like', '%' . $search . '%');
             });
         }
@@ -36,29 +27,18 @@ class ClientController extends Controller
         return response()->json($query->latest()->paginate($perPage));
     }
 
-    /**
-     * Autocomplete pour commande-create
-     * GET /api/clients/autocomplete?q=&boutique_id=
-     */
     public function autocomplete(Request $request)
     {
         $q = $request->input('q', '');
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
 
         if (strlen($q) < 2) {
             return response()->json([]);
         }
 
-        $query = Client::query();
-
-        if ($boutiqueId) {
-            $query->where('boutique_id', $boutiqueId);
-        }
-
-        $clients = $query->where(function ($query) use ($q) {
+        $qClean = $this->normalizePhone($q);
+        $clients = Client::where(function ($query) use ($q, $qClean) {
             $query->where('nom_complet', 'like', '%' . $q . '%')
+                ->orWhere('telephone', 'like', '%' . $qClean . '%')
                 ->orWhere('telephone', 'like', '%' . $q . '%');
         })
             ->limit(10)
@@ -67,27 +47,13 @@ class ClientController extends Controller
         return response()->json($clients);
     }
 
-    /**
-     * Recherche client par téléphone
-     * GET /api/clients/search?telephone=
-     */
     public function search(Request $request)
     {
         $request->validate(['telephone' => 'required|string']);
 
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
+        $telephone = $this->normalizePhone($request->telephone);
 
-        $telephone = $this->cleanPhoneNumber($request->telephone);
-
-        $query = Client::where('telephone', $telephone);
-
-        if ($boutiqueId) {
-            $query->where('boutique_id', $boutiqueId);
-        }
-
-        $client = $query->first();
+        $client = Client::where('telephone', $telephone)->first();
 
         if (!$client) {
             return response()->json(['message' => 'Client non trouvé'], 404);
@@ -96,30 +62,17 @@ class ClientController extends Controller
         return response()->json($client);
     }
 
-    /**
-     * Recherche par téléphone (pour commande-create)
-     * GET /api/clients/recherche-telephone?telephone=
-     */
     public function rechercherParTelephone(Request $request)
     {
         $telephone = $request->input('telephone');
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
 
         if (!$telephone) {
             return response()->json(['message' => 'Numéro de téléphone requis'], 400);
         }
 
-        $telephoneClean = $this->cleanPhoneNumber($telephone);
+        $telephoneClean = $this->normalizePhone($telephone);
 
-        $query = Client::query();
-
-        if ($boutiqueId) {
-            $query->where('boutique_id', $boutiqueId);
-        }
-
-        $client = $query->where('telephone', $telephoneClean)->first();
+        $client = Client::where('telephone', $telephoneClean)->first();
 
         if (!$client) {
             return response()->json(['message' => 'Client non trouvé'], 404);
@@ -128,10 +81,6 @@ class ClientController extends Controller
         return response()->json($client);
     }
 
-    /**
-     * Créer un client
-     * POST /api/clients
-     */
     public function store(Request $request)
     {
         $user = $request->user();
@@ -144,16 +93,16 @@ class ClientController extends Controller
             'boutique_id' => $user->isAdmin() ? 'required|exists:boutiques,id' : 'nullable',
         ]);
 
-        // Nettoyer le téléphone
-        $telephoneClean = $this->cleanPhoneNumber($request->telephone);
+        $telephoneClean = $this->normalizePhone($request->telephone);
 
-        // ⚠️ VÉRIFICATION UNICITÉ TÉLÉPHONE
+        // Vérification globale : le numéro existe déjà dans TOUTE la base
         $exists = Client::where('telephone', $telephoneClean)->exists();
+
         if ($exists) {
             return response()->json([
                 'message' => 'Ce numéro de téléphone existe déjà.',
                 'errors' => [
-                    'telephone' => ['Ce numéro de téléphone est déjà utilisé. Veuillez utiliser un autre numéro.']
+                    'telephone' => ['Ce numéro de téléphone est déjà utilisé par un autre client.']
                 ]
             ], 422);
         }
@@ -168,45 +117,27 @@ class ClientController extends Controller
         return response()->json(['message' => 'Client créé avec succès', 'client' => $client], 201);
     }
 
-    /**
-     * Afficher un client
-     * GET /api/clients/{id}
-     */
     public function show(Client $client)
     {
-        // Charger les relations
         $client->load('boutique', 'commandes');
 
-        // ═══════════════════════════════════════════════════════
-        // 📊 CALCUL DES STATISTIQUES
-        // ═══════════════════════════════════════════════════════
-
         $commandes = $client->commandes;
-
-        // Stats générales
         $totalCommandes = $commandes->count();
         $commandesValidees = $commandes->where('statut', 'validee');
         $commandesEnCours = $commandes->where('statut', 'en_cours');
         $commandesAnnulees = $commandes->where('statut', 'annulee');
 
-        // Total dépensé (seulement commandes validées)
         $totalDepense = $commandesValidees->sum(function ($cmd) {
             return (float) $cmd->total;
         });
 
-        // Commande moyenne
         $commandeMoyenne = $commandesValidees->count() > 0
             ? round($totalDepense / $commandesValidees->count(), 2)
             : 0;
 
-        // Dernière commande validée
         $derniereCommande = $commandesValidees
             ->sortByDesc('date_validation')
             ->first();
-
-        // ═══════════════════════════════════════════════════════
-        // 📦 FORMATER LA RÉPONSE
-        // ═══════════════════════════════════════════════════════
 
         return response()->json([
             'client' => [
@@ -245,10 +176,6 @@ class ClientController extends Controller
         ]);
     }
 
-    /**
-     * Modifier un client
-     * PUT /api/clients/{id}
-     */
     public function update(Request $request, Client $client)
     {
         $user = $request->user();
@@ -263,11 +190,10 @@ class ClientController extends Controller
             'adresse'     => 'nullable|string',
         ]);
 
-        // Si téléphone modifié, vérifier unicité
         if ($request->has('telephone')) {
-            $telephoneClean = $this->cleanPhoneNumber($request->telephone);
+            $telephoneClean = $this->normalizePhone($request->telephone);
 
-            // Vérifier que ce numéro n'existe pas (sauf pour ce client)
+            // Vérification globale : le numéro existe déjà (sauf ce client)
             $exists = Client::where('telephone', $telephoneClean)
                 ->where('id', '!=', $client->id)
                 ->exists();
@@ -297,10 +223,6 @@ class ClientController extends Controller
         return response()->json(['message' => 'Client modifié avec succès', 'client' => $client]);
     }
 
-    /**
-     * Supprimer un client
-     * DELETE /api/clients/{id}
-     */
     public function destroy(Request $request, Client $client)
     {
         $user = $request->user();
@@ -319,11 +241,38 @@ class ClientController extends Controller
     }
 
     /**
-     * Nettoyer le numéro de téléphone
-     * Enlève espaces, tirets, parenthèses
+     * Normalise un numéro de téléphone :
+     * - Supprime espaces, tirets, parenthèses, +, 00 en début
+     * - Numéro sénégalais 9 chiffres (7XXXXXXXX) → ajoute 221
+     * - Numéro sénégalais 8 chiffres (7XXXXXXX) → ajoute 221
+     * - 00221... → 221...
+     * - +221... → 221...
+     * - Déjà 221XXXXXXXXX → OK
+     * - International → laisse tel quel
      */
-    private function cleanPhoneNumber(string $phone): string
+    private function normalizePhone(string $phone): string
     {
-        return preg_replace('/[\s\-\(\)]/', '', $phone);
+        // Supprimer espaces, tirets, parenthèses, points
+        $phone = preg_replace('/[\s\-\(\)\.]/', '', $phone);
+
+        // Supprimer le + au début
+        $phone = ltrim($phone, '+');
+
+        // Supprimer 00 au début (format international 00221...)
+        if (str_starts_with($phone, '00')) {
+            $phone = substr($phone, 2);
+        }
+
+        // Numéro sénégalais 9 chiffres (7XXXXXXXX) → ajouter 221
+        if (preg_match('/^7[0-9]{8}$/', $phone)) {
+            $phone = '221' . $phone;
+        }
+
+        // Numéro sénégalais 8 chiffres (7XXXXXXX) → ajouter 221
+        if (preg_match('/^7[0-9]{7}$/', $phone)) {
+            $phone = '221' . $phone;
+        }
+
+        return $phone;
     }
 }
