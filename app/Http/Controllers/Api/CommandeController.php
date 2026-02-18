@@ -13,68 +13,61 @@ class CommandeController extends Controller
 {
     // ─────────────────────────────────────────────────────────────────────────
     // 📋 LISTE TOUTES LES COMMANDES
-    // GET /api/commandes
-    // Paramètres optionnels : ?boutique_id= &statut= &date= &per_page=
     // ─────────────────────────────────────────────────────────────────────────
-   public function index(Request $request)
-{
-    $boutiqueId = $request->user()->isAdmin()
-        ? $request->input('boutique_id')
-        : $request->user()->boutique_id;
+    public function index(Request $request)
+    {
+        $boutiqueId = $request->user()->isAdmin()
+            ? $request->input('boutique_id')
+            : $request->user()->boutique_id;
 
-    $perPage = $request->input('per_page', 15);
-    $query   = Commande::with(['client', 'employe', 'livreur','boutique']);
+        $perPage = $request->input('per_page', 15);
+        $query   = Commande::with(['client', 'employe', 'livreur', 'boutique']);
 
-    if ($boutiqueId)               $query->where('boutique_id', $boutiqueId);
-    if ($request->input('statut')) $query->where('statut', $request->input('statut'));
-    if ($request->input('date'))   $query->whereDate('date_commande', $request->input('date'));
+        if ($boutiqueId)               $query->where('boutique_id', $boutiqueId);
+        if ($request->input('statut')) $query->where('statut', $request->input('statut'));
+        if ($request->input('date'))   $query->whereDate('date_commande', $request->input('date'));
 
-    // ✅ Filtre par semaine
-    if ($request->input('semaine')) {
-        $date = Carbon::parse($request->input('semaine'));
-        $query->whereBetween('date_commande', [
-            $date->copy()->startOfWeek(),
-            $date->copy()->endOfWeek(),
+        if ($request->input('semaine')) {
+            $date = Carbon::parse($request->input('semaine'));
+            $query->whereBetween('date_commande', [
+                $date->copy()->startOfWeek(),
+                $date->copy()->endOfWeek(),
+            ]);
+        }
+
+        if ($request->input('mois') && $request->input('annee')) {
+            $query->whereMonth('date_commande', $request->input('mois'))
+                  ->whereYear('date_commande', $request->input('annee'));
+        }
+
+        if ($request->input('annee') && !$request->input('mois')) {
+            $query->whereYear('date_commande', $request->input('annee'));
+        }
+
+        $totalCommandes = (clone $query)->count();
+        $sommeTotal     = (clone $query)->where('statut', 'validee')->sum('total');
+        $totalValidees  = (clone $query)->where('statut', 'validee')->sum('total');
+        $nbValidees     = (clone $query)->where('statut', 'validee')->count();
+        $nbEnCours      = (clone $query)->where('statut', 'en_cours')->count();
+        $nbAnnulees     = (clone $query)->where('statut', 'annulee')->count();
+
+        $commandes = $query->orderBy('created_at', 'desc')->paginate($perPage);
+
+        return response()->json([
+            'resume' => [
+                'total_commandes' => $totalCommandes,
+                'somme_totale'    => $sommeTotal,
+                'total_validees'  => $totalValidees,
+                'nb_validees'     => $nbValidees,
+                'nb_en_cours'     => $nbEnCours,
+                'nb_annulees'     => $nbAnnulees,
+            ],
+            'commandes' => $commandes,
         ]);
     }
 
-    // ✅ Filtre par mois/année
-    if ($request->input('mois') && $request->input('annee')) {
-        $query->whereMonth('date_commande', $request->input('mois'))
-              ->whereYear('date_commande', $request->input('annee'));
-    }
-
-    // ✅ Filtre par année seule
-    if ($request->input('annee') && !$request->input('mois')) {
-        $query->whereYear('date_commande', $request->input('annee'));
-    }
-
-    // ✅ Résumé
-    $totalCommandes = (clone $query)->count();
-    $sommeTotal     = (clone $query)->where('statut', 'validee')->sum('total');
-    $totalValidees  = (clone $query)->where('statut', 'validee')->sum('total');
-    $nbValidees     = (clone $query)->where('statut', 'validee')->count();
-    $nbEnCours      = (clone $query)->where('statut', 'en_cours')->count();
-    $nbAnnulees     = (clone $query)->where('statut', 'annulee')->count();
-
-    $commandes = $query->orderBy('created_at', 'desc')->paginate($perPage);
-
-    return response()->json([
-        'resume' => [
-            'total_commandes' => $totalCommandes,
-            'somme_totale'    => $sommeTotal,
-            'total_validees'  => $totalValidees,
-            'nb_validees'     => $nbValidees,
-            'nb_en_cours'     => $nbEnCours,
-            'nb_annulees'     => $nbAnnulees,
-        ],
-        'commandes' => $commandes,
-    ]);
-}
-
     // ─────────────────────────────────────────────────────────────────────────
     // ⏳ COMMANDES EN COURS
-    // GET /api/commandes/en-cours
     // ─────────────────────────────────────────────────────────────────────────
     public function enCours(Request $request)
     {
@@ -92,8 +85,6 @@ class CommandeController extends Controller
 
     // ─────────────────────────────────────────────────────────────────────────
     // ✅ COMMANDES VALIDÉES
-    // GET /api/commandes/validees
-    // Paramètres optionnels : ?date= &mois= &annee=
     // ─────────────────────────────────────────────────────────────────────────
     public function validees(Request $request)
     {
@@ -120,7 +111,6 @@ class CommandeController extends Controller
 
     // ─────────────────────────────────────────────────────────────────────────
     // ❌ COMMANDES ANNULÉES
-    // GET /api/commandes/annulees
     // ─────────────────────────────────────────────────────────────────────────
     public function annulees(Request $request)
     {
@@ -138,7 +128,6 @@ class CommandeController extends Controller
 
     // ─────────────────────────────────────────────────────────────────────────
     // 📅 HISTORIQUE PAR DATE
-    // GET /api/commandes/historique?date=2026-02-10
     // ─────────────────────────────────────────────────────────────────────────
     public function historique(Request $request)
     {
@@ -155,9 +144,8 @@ class CommandeController extends Controller
 
         if ($boutiqueId) $query->where('boutique_id', $boutiqueId);
 
-        // ✅ CORRECTION : Somme totale = SEULEMENT les validées
         $totalCommandes = (clone $query)->count();
-        $sommeTotal     = (clone $query)->where('statut', 'validee')->sum('total'); // ✅ CORRIGÉ
+        $sommeTotal     = (clone $query)->where('statut', 'validee')->sum('total');
         $totalValidees  = (clone $query)->where('statut', 'validee')->sum('total');
         $nbAnnulees     = (clone $query)->where('statut', 'annulee')->count();
         $nbEnCours      = (clone $query)->where('statut', 'en_cours')->count();
@@ -168,7 +156,7 @@ class CommandeController extends Controller
             'resume' => [
                 'date'            => $request->date,
                 'total_commandes' => $totalCommandes,
-                'somme_totale'    => $sommeTotal, // ✅ Maintenant = total_validees
+                'somme_totale'    => $sommeTotal,
                 'total_validees'  => $totalValidees,
                 'nb_en_cours'     => $nbEnCours,
                 'nb_annulees'     => $nbAnnulees,
@@ -177,38 +165,34 @@ class CommandeController extends Controller
         ]);
     }
 
-
-
     // ─────────────────────────────────────────────────────────────────────────
     // ➕ CRÉER UNE COMMANDE
-    // POST /api/commandes
     // ─────────────────────────────────────────────────────────────────────────
     public function store(Request $request)
     {
         $user = auth()->user();
 
-        // ── Admin → boutique_id libre depuis le request
-        // ── Gérant → boutique_id forcé depuis son propre profil, on ignore le request
         $boutiqueId = $user->role === 'admin'
             ? $request->boutique_id
             : $user->boutique_id;
 
         $request->validate([
-            'boutique_id'           => $user->role === 'admin' ? 'required|exists:boutiques,id' : 'nullable',
-            'client_id'             => 'nullable|exists:clients,id',
-            'employe_id'            => 'required|exists:employes,id',
-            'livreur_id'            => 'nullable|exists:livreurs,id',
-            'type_commande'         => 'required|in:sur_place,livraison',
-            'notes'                 => 'nullable|string',
-            'produits'              => 'required|array|min:1',
-            'produits.*.produit_id' => 'required|exists:produits,id',
-            'produits.*.quantite'   => 'required|integer|min:1',
+            'boutique_id'              => $user->role === 'admin' ? 'required|exists:boutiques,id' : 'nullable',
+            'client_id'                => 'nullable|exists:clients,id',
+            'employe_id'               => 'required|exists:employes,id',
+            'livreur_id'               => 'nullable|exists:livreurs,id',
+            'type_commande'            => 'required|in:sur_place,livraison',
+            'notes'                    => 'nullable|string',
+            'produits'                 => 'required|array|min:1',
+            'produits.*.produit_id'    => 'required|exists:produits,id',
+            'produits.*.quantite'      => 'required|integer|min:1',
+            'produits.*.prix_unitaire' => 'nullable|numeric|min:0',
         ]);
 
         DB::beginTransaction();
         try {
             $commande = Commande::create([
-                'boutique_id'   => $boutiqueId,  // ← jamais depuis le request pour un gérant
+                'boutique_id'   => $boutiqueId,
                 'client_id'     => $request->client_id,
                 'employe_id'    => $request->employe_id,
                 'livreur_id'    => $request->livreur_id,
@@ -221,7 +205,7 @@ class CommandeController extends Controller
             foreach ($request->produits as $item) {
                 $produit   = Produit::findOrFail($item['produit_id']);
                 $quantite  = $item['quantite'];
-                $prixUnit  = $produit->prix_vente;
+                $prixUnit  = $item['prix_unitaire'] ?? $produit->prix_vente;
                 $sousTotal = $prixUnit * $quantite;
 
                 $commande->produits()->attach($produit->id, [
@@ -248,7 +232,6 @@ class CommandeController extends Controller
 
     // ─────────────────────────────────────────────────────────────────────────
     // 👁️ AFFICHER UNE COMMANDE
-    // GET /api/commandes/{commande}
     // ─────────────────────────────────────────────────────────────────────────
     public function show(Commande $commande)
     {
@@ -259,7 +242,6 @@ class CommandeController extends Controller
 
     // ─────────────────────────────────────────────────────────────────────────
     // ✅ VALIDER UNE COMMANDE
-    // POST /api/commandes/{commande}/valider
     // ─────────────────────────────────────────────────────────────────────────
     public function valider(Commande $commande)
     {
@@ -308,8 +290,6 @@ class CommandeController extends Controller
 
     // ─────────────────────────────────────────────────────────────────────────
     // ❌ ANNULER UNE COMMANDE
-    // POST /api/commandes/{commande}/annuler
-    // Body : { "raison": "..." }
     // ─────────────────────────────────────────────────────────────────────────
     public function annuler(Request $request, Commande $commande)
     {
@@ -332,7 +312,6 @@ class CommandeController extends Controller
 
     // ─────────────────────────────────────────────────────────────────────────
     // ✏️ MODIFIER UNE COMMANDE EN COURS
-    // PUT /api/commandes/{commande}
     // ─────────────────────────────────────────────────────────────────────────
     public function update(Request $request, Commande $commande)
     {
@@ -341,14 +320,15 @@ class CommandeController extends Controller
         }
 
         $request->validate([
-            'client_id'             => 'nullable|exists:clients,id',
-            'employe_id'            => 'sometimes|exists:employes,id',
-            'livreur_id'            => 'nullable|exists:livreurs,id',
-            'type_commande'         => 'sometimes|in:sur_place,livraison',
-            'notes'                 => 'nullable|string',
-            'produits'              => 'sometimes|array|min:1',
-            'produits.*.produit_id' => 'required|exists:produits,id',
-            'produits.*.quantite'   => 'required|integer|min:1',
+            'client_id'                => 'nullable|exists:clients,id',
+            'employe_id'               => 'sometimes|exists:employes,id',
+            'livreur_id'               => 'nullable|exists:livreurs,id',
+            'type_commande'            => 'sometimes|in:sur_place,livraison',
+            'notes'                    => 'nullable|string',
+            'produits'                 => 'sometimes|array|min:1',
+            'produits.*.produit_id'    => 'required|exists:produits,id',
+            'produits.*.quantite'      => 'required|integer|min:1',
+            'produits.*.prix_unitaire' => 'nullable|numeric|min:0',
         ]);
 
         DB::beginTransaction();
@@ -364,7 +344,7 @@ class CommandeController extends Controller
                 foreach ($request->produits as $item) {
                     $produit   = Produit::findOrFail($item['produit_id']);
                     $quantite  = $item['quantite'];
-                    $prixUnit  = $produit->prix_vente;
+                    $prixUnit  = $item['prix_unitaire'] ?? $produit->prix_vente;
                     $sousTotal = $prixUnit * $quantite;
 
                     $commande->produits()->attach($produit->id, [
@@ -392,7 +372,6 @@ class CommandeController extends Controller
 
     // ─────────────────────────────────────────────────────────────────────────
     // 🗑️ SUPPRIMER UNE COMMANDE EN COURS
-    // DELETE /api/commandes/{commande}
     // ─────────────────────────────────────────────────────────────────────────
     public function destroy(Commande $commande)
     {
@@ -405,7 +384,9 @@ class CommandeController extends Controller
         return response()->json(['message' => 'Commande supprimée avec succès']);
     }
 
-    // Recherche commande par référence ou téléphone client
+    // ─────────────────────────────────────────────────────────────────────────
+    // 🔍 RECHERCHE COMMANDES
+    // ─────────────────────────────────────────────────────────────────────────
     public function search(Request $request)
     {
         $search = $request->input('search', '');
