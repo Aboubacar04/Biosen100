@@ -72,4 +72,11 @@ class Produit extends Model
         return $query->whereNotNull('seuil_alerte')
             ->whereColumn('stock', '<=', 'seuil_alerte');
     }
+
+    public function gammes()
+{
+    return $this->belongsToMany(Gamme::class, 'gamme_produit')
+                ->withPivot('quantite')
+                ->withTimestamps();
+}
 }

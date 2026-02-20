@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\FactureController;
 use App\Http\Controllers\Api\DepenseController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\GammeController;
 
 /*
 |--------------------------------------------------------------------------
@@ -158,6 +159,17 @@ Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(
     Route::post('/{commande}/valider', [CommandeController::class, 'valider']);
     Route::post('/{commande}/annuler', [CommandeController::class, 'annuler']);
 });
+
+    // ----------------------------------------
+    // 📦 GAMMES
+    // ----------------------------------------
+    Route::prefix('gammes')->group(function () {
+        Route::get('/',           [\App\Http\Controllers\Api\GammeController::class, 'index']);
+        Route::post('/',          [\App\Http\Controllers\Api\GammeController::class, 'store']);
+        Route::get('/{gamme}',    [\App\Http\Controllers\Api\GammeController::class, 'show']);
+        Route::put('/{gamme}',    [\App\Http\Controllers\Api\GammeController::class, 'update']);
+        Route::delete('/{gamme}', [\App\Http\Controllers\Api\GammeController::class, 'destroy']);
+    });
 
    // ──────────────────────────────────────────────────────────────
 // 🧾 FACTURES
