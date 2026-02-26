@@ -197,7 +197,10 @@ class Commande extends Model
             // Générer le numéro de commande
             if (!$commande->numero_commande) {
                 $annee = now()->year;
-                $dernierNumero = Commande::whereYear('created_at', $annee)->count() + 1;
+             $dernierNumero = (int) Commande::whereYear('created_at', $annee)
+    ->selectRaw("MAX(CAST(SUBSTRING(numero_commande, 10) AS UNSIGNED)) as max_num")
+    ->value('max_num');
+$dernierNumero = $dernierNumero + 1;
                 $commande->numero_commande = 'CMD-' . $annee . '-' . str_pad($dernierNumero, 5, '0', STR_PAD_LEFT);
             }
 

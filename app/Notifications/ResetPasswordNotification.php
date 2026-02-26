@@ -25,7 +25,7 @@ class ResetPasswordNotification extends Notification
     public function toMail($notifiable)
     {
         // URL du frontend Angular
-        $url = env('FRONTEND_URL', 'http://localhost:4200') . '/reset-password?token=' . $this->token . '&email=' . urlencode($notifiable->email);
+        $url = env('FRONTEND_URL', 'https://biosen100.shop') . '/reset-password?token=' . $this->token . '&email=' . urlencode($notifiable->email);
 
         return (new MailMessage)
             ->subject('Réinitialisation de mot de passe - Biosen100')
