@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\DepenseController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\GammeController;
+use App\Http\Controllers\Api\CommandeBisenController;
 
 /*
 |--------------------------------------------------------------------------
@@ -39,26 +40,37 @@ Route::middleware(['auth:sanctum', 'account.active', 'admin'])->prefix('users')-
     Route::get('/',                      [UserController::class, 'index']);
     Route::post('/',                     [UserController::class, 'store']);
     Route::get('/{user}',                [UserController::class, 'show']);
-    Route::post('/{user}',                [UserController::class, 'update']);
+    Route::post('/{user}',              [UserController::class, 'update']);
     Route::patch('/{user}/role',         [UserController::class, 'changerRole']);
     Route::patch('/{user}/toggle-actif', [UserController::class, 'toggleActif']);
     Route::delete('/{user}',             [UserController::class, 'destroy']);
 });
 
 // ========================================
-// 🔐 ROUTES PROTÉGÉES (Authentification requise)
+// 👤 AUTH (tous les utilisateurs connectés, y compris saisisseur)
+// ========================================
+
+Route::middleware(['auth:sanctum', 'account.active'])->prefix('auth')->group(function () {
+    Route::post('/logout',           [AuthController::class, 'logout']);
+    Route::get('/me',                [AuthController::class, 'me']);
+    Route::post('/change-password',  [AuthController::class, 'changePassword']);
+});
+
+// ========================================
+// 📝 SAISIES COMMANDES (pas besoin de boutique)
+// ========================================
+
+Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
+    Route::post('/commande-bisens',                    [CommandeBisenController::class, 'store']);
+    Route::get('/commande-bisens',                     [CommandeBisenController::class, 'index']);
+    Route::delete('/commande-bisens/{commandeBisen}',  [CommandeBisenController::class, 'destroy']);
+});
+
+// ========================================
+// 🔐 ROUTES PROTÉGÉES (avec boutique active)
 // ========================================
 
 Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(function () {
-
-    // ----------------------------------------
-    // 👤 AUTHENTIFICATION
-    // ----------------------------------------
-    Route::prefix('auth')->group(function () {
-        Route::post('/logout',           [AuthController::class, 'logout']);
-        Route::get('/me',                [AuthController::class, 'me']);
-        Route::post('/change-password',  [AuthController::class, 'changePassword']);
-    });
 
     // ----------------------------------------
     // 🏪 BOUTIQUES (Admin uniquement)
@@ -91,7 +103,7 @@ Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(
         Route::get('/stock-faible',  [ProduitController::class, 'stockFaible']);
         Route::post('/',             [ProduitController::class, 'store']);
         Route::get('/{produit}',     [ProduitController::class, 'show']);
-        Route::post('/{produit}',    [ProduitController::class, 'update']); // POST pour upload images
+        Route::post('/{produit}',    [ProduitController::class, 'update']);
         Route::delete('/{produit}',  [ProduitController::class, 'destroy']);
     });
 
@@ -102,7 +114,7 @@ Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(
         Route::get('/',              [EmployeController::class, 'index']);
         Route::post('/',             [EmployeController::class, 'store']);
         Route::get('/{employe}',     [EmployeController::class, 'show']);
-        Route::post('/{employe}',    [EmployeController::class, 'update']); // POST pour upload photos
+        Route::post('/{employe}',    [EmployeController::class, 'update']);
         Route::delete('/{employe}',  [EmployeController::class, 'destroy']);
     });
 
@@ -122,13 +134,11 @@ Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(
     // ----------------------------------------
     // 👥 CLIENTS
     // ----------------------------------------
-    // Dans routes/api.php
-
     Route::prefix('clients')->group(function () {
         Route::get('/',                      [ClientController::class, 'index']);
-        Route::get('/autocomplete',          [ClientController::class, 'autocomplete']);          // NOUVEAU
+        Route::get('/autocomplete',          [ClientController::class, 'autocomplete']);
         Route::get('/search',                [ClientController::class, 'search']);
-        Route::get('/recherche-telephone',   [ClientController::class, 'rechercherParTelephone']); // CORRIGÉ
+        Route::get('/recherche-telephone',   [ClientController::class, 'rechercherParTelephone']);
         Route::post('/',                     [ClientController::class, 'store']);
         Route::get('/{client}',              [ClientController::class, 'show']);
         Route::put('/{client}',              [ClientController::class, 'update']);
@@ -137,54 +147,54 @@ Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(
 
     // ----------------------------------------
     // 🛒 COMMANDES
-    // ⚠️  Les routes statiques DOIVENT être déclarées AVANT les routes dynamiques {commande}
     // ----------------------------------------
     Route::prefix('commandes')->group(function () {
-    // Routes statiques
-    Route::get('/en-cours',   [CommandeController::class, 'enCours']);
-    Route::get('/validees',   [CommandeController::class, 'validees']);
-    Route::get('/annulees',   [CommandeController::class, 'annulees']);
-    Route::get('/historique', [CommandeController::class, 'historique']);
-    Route::get('/employe/{employe_id}/du-jour', [CommandeController::class, 'commandesDuJourEmploye']);
-    Route::get('/search', [CommandeController::class, 'search']); // ✅ Corrigé
+        // Routes statiques
+        Route::get('/en-cours',   [CommandeController::class, 'enCours']);
+        Route::get('/validees',   [CommandeController::class, 'validees']);
+        Route::get('/annulees',   [CommandeController::class, 'annulees']);
+        Route::get('/historique', [CommandeController::class, 'historique']);
+        Route::get('/employe/{employe_id}/du-jour', [CommandeController::class, 'commandesDuJourEmploye']);
+        Route::get('/search',     [CommandeController::class, 'search']);
 
-    // CRUD
-    Route::get('/',    [CommandeController::class, 'index']);
-    Route::post('/',   [CommandeController::class, 'store']);
+        // CRUD
+        Route::get('/',    [CommandeController::class, 'index']);
+        Route::post('/',   [CommandeController::class, 'store']);
 
-    // Routes dynamiques
-    Route::get('/{commande}',          [CommandeController::class, 'show']);
-    Route::put('/{commande}',          [CommandeController::class, 'update']);
-    Route::delete('/{commande}',       [CommandeController::class, 'destroy']);
-    Route::post('/{commande}/valider', [CommandeController::class, 'valider']);
-    Route::post('/{commande}/annuler', [CommandeController::class, 'annuler']);
-});
+        // Routes dynamiques
+        Route::get('/{commande}',          [CommandeController::class, 'show']);
+        Route::put('/{commande}',          [CommandeController::class, 'update']);
+        Route::delete('/{commande}',       [CommandeController::class, 'destroy']);
+        Route::post('/{commande}/valider', [CommandeController::class, 'valider']);
+        Route::post('/{commande}/annuler', [CommandeController::class, 'annuler']);
+    });
 
     // ----------------------------------------
     // 📦 GAMMES
     // ----------------------------------------
     Route::prefix('gammes')->group(function () {
-        Route::get('/',           [\App\Http\Controllers\Api\GammeController::class, 'index']);
-        Route::post('/',          [\App\Http\Controllers\Api\GammeController::class, 'store']);
-        Route::get('/{gamme}',    [\App\Http\Controllers\Api\GammeController::class, 'show']);
-        Route::put('/{gamme}',    [\App\Http\Controllers\Api\GammeController::class, 'update']);
-        Route::delete('/{gamme}', [\App\Http\Controllers\Api\GammeController::class, 'destroy']);
+        Route::get('/',           [GammeController::class, 'index']);
+        Route::post('/',          [GammeController::class, 'store']);
+        Route::get('/{gamme}',    [GammeController::class, 'show']);
+        Route::put('/{gamme}',    [GammeController::class, 'update']);
+        Route::delete('/{gamme}', [GammeController::class, 'destroy']);
     });
 
-   // ──────────────────────────────────────────────────────────────
-// 🧾 FACTURES
-// ──────────────────────────────────────────────────────────────
-Route::prefix('factures')->group(function () {
-    Route::get('/aujourdhui',     [FactureController::class, 'aujourdhui']);
-    Route::get('/semaine',         [FactureController::class, 'semaine']);
-    Route::get('/mois',            [FactureController::class, 'mois']);
-    Route::get('/annee',           [FactureController::class, 'annee']);
-    Route::get('/search',          [FactureController::class, 'search']);
-    Route::get('/',                [FactureController::class, 'index']);
-    Route::get('/{facture}',       [FactureController::class, 'show']);
-});
+    // ----------------------------------------
+    // 🧾 FACTURES
+    // ----------------------------------------
+    Route::prefix('factures')->group(function () {
+        Route::get('/aujourdhui',  [FactureController::class, 'aujourdhui']);
+        Route::get('/semaine',     [FactureController::class, 'semaine']);
+        Route::get('/mois',        [FactureController::class, 'mois']);
+        Route::get('/annee',       [FactureController::class, 'annee']);
+        Route::get('/search',      [FactureController::class, 'search']);
+        Route::get('/',            [FactureController::class, 'index']);
+        Route::get('/{facture}',   [FactureController::class, 'show']);
+    });
 
-Route::get('/commandes/{commande}/facture', [FactureController::class, 'parCommande']);
+    Route::get('/commandes/{commande}/facture', [FactureController::class, 'parCommande']);
+
     // ----------------------------------------
     // 💰 DÉPENSES
     // ----------------------------------------
@@ -202,43 +212,14 @@ Route::get('/commandes/{commande}/facture', [FactureController::class, 'parComma
     // ----------------------------------------
     Route::prefix('dashboard')->group(function () {
         Route::get('/stats',              [DashboardController::class, 'stats']);
-
-        // Top performers
         Route::get('/top-produits',       [DashboardController::class, 'topProduits']);
         Route::get('/top-employes',       [DashboardController::class, 'topEmployes']);
         Route::get('/top-livreurs',       [DashboardController::class, 'topLivreurs']);
-
-        // Graphiques
         Route::get('/commandes-semaine',  [DashboardController::class, 'commandesSemaine']);
         Route::get('/commandes-mois',     [DashboardController::class, 'commandesMois']);
         Route::get('/evolution-ventes',   [DashboardController::class, 'evolutionVentes']);
-
-        // Stock et stats détaillées
         Route::get('/stock-faible',               [DashboardController::class, 'stockFaible']);
         Route::get('/stats-employe/{employe}',    [DashboardController::class, 'statsEmploye']);
     });
-});
 
-
-Route::get('/debug-user', function () {
-    $user = auth()->user();
-
-    return response()->json([
-        'user_id'       => $user->id,
-        'user_role'     => $user->role,
-        'user_email'    => $user->email,
-
-        // ── Tester la relation directe
-        'employe_relation'    => $user->employe,
-
-        // ── Chercher manuellement avec différents noms de FK possibles
-        'search_by_user_id'       => \App\Models\Employe::where('user_id',  $user->id)->first(),
-        'search_by_utilisateur_id'=> \App\Models\Employe::where('utilisateur_id', $user->id)->first(),
-
-        // ── Voir toutes les colonnes de la table employes
-        'employes_columns'    => \Illuminate\Support\Facades\Schema::getColumnListing('employes'),
-
-        // ── Voir les 5 premiers employés pour comprendre la structure
-        'employes_sample'     => \App\Models\Employe::limit(5)->get(),
-    ]);
-})->middleware('auth:sanctum');
+}); // ← FIN du groupe boutique.active

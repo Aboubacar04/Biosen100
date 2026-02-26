@@ -162,30 +162,28 @@ class Commande extends Model
         return $this;
     }
 
-    /**
-     * Générer la facture
-     */
-    public function genererFacture()
-    {
-        // Vérifier qu'il n'y a pas déjà une facture
-        if ($this->facture) {
-            return $this->facture;
-        }
-
-        // Générer le numéro de facture
-        $annee = now()->year;
-        $dernierNumero = Facture::whereYear('created_at', $annee)->count() + 1;
-        $numeroFacture = 'FAC-' . $annee . '-' . str_pad($dernierNumero, 5, '0', STR_PAD_LEFT);
-
-        // Créer la facture
-        return Facture::create([
-            'commande_id' => $this->id,
-            'numero_facture' => $numeroFacture,
-            'date_facture' => now(),
-            'montant_total' => $this->total,
-        ]);
+   public function genererFacture()
+{
+    if ($this->facture) {
+        return $this->facture;
     }
 
+    $annee = now()->year;
+    $prefix = 'FAC-' . $annee . '-';
+
+    $dernierNumero = Facture::whereYear('created_at', $annee)
+        ->selectRaw("MAX(CAST(SUBSTRING(numero_facture, " . (strlen($prefix) + 1) . ") AS UNSIGNED)) as max_num")
+        ->value('max_num') ?? 0;
+
+    $numeroFacture = $prefix . str_pad($dernierNumero + 1, 5, '0', STR_PAD_LEFT);
+
+    return Facture::create([
+        'commande_id' => $this->id,
+        'numero_facture' => $numeroFacture,
+        'date_facture' => now(),
+        'montant_total' => $this->total,
+    ]);
+}
     /**
      * Boot
      */

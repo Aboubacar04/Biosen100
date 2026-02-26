@@ -31,7 +31,7 @@ class UserController extends Controller
     }
 
     /**
-     * ➕ CRÉER un utilisateur (admin ou gérant)
+     * ➕ CRÉER un utilisateur (admin, gérant ou saisisseur)
      * Route : POST /api/users
      */
     public function store(Request $request)
@@ -40,7 +40,7 @@ class UserController extends Controller
             'nom'         => 'required|string|max:255',
             'email'       => 'required|email|unique:users,email',
             'password'    => 'required|string|min:8',
-            'role'        => 'required|in:admin,gerant',
+            'role'        => 'required|in:admin,gerant,saisisseur',
             'boutique_id' => 'nullable|exists:boutiques,id',
             'photo'       => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'actif'       => 'sometimes|boolean',
@@ -53,8 +53,8 @@ class UserController extends Controller
             ], 422);
         }
 
-        // 🔒 Un admin n'a pas de boutique
-        if ($request->role === 'admin') {
+        // 🔒 Admin et saisisseur n'ont pas de boutique
+        if (in_array($request->role, ['admin', 'saisisseur'])) {
             $request->merge(['boutique_id' => null]);
         }
 
@@ -98,7 +98,7 @@ class UserController extends Controller
             'nom'         => 'sometimes|string|max:255',
             'email'       => 'sometimes|email|unique:users,email,' . $user->id,
             'password'    => 'nullable|string|min:8',
-            'role'        => 'sometimes|in:admin,gerant',
+            'role'        => 'sometimes|in:admin,gerant,saisisseur',
             'boutique_id' => 'nullable|exists:boutiques,id',
             'photo'       => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'actif'       => 'sometimes|boolean',
@@ -116,7 +116,8 @@ class UserController extends Controller
             }
         }
 
-        if ($newRole === 'admin') {
+        // Admin et saisisseur n'ont pas de boutique
+        if (in_array($newRole, ['admin', 'saisisseur'])) {
             $request->merge(['boutique_id' => null]);
         }
 
@@ -151,7 +152,7 @@ class UserController extends Controller
     public function changerRole(Request $request, User $user)
     {
         $request->validate([
-            'role'        => 'required|in:admin,gerant',
+            'role'        => 'required|in:admin,gerant,saisisseur',
             'boutique_id' => 'nullable|exists:boutiques,id',
         ]);
 
@@ -164,7 +165,7 @@ class UserController extends Controller
 
         $user->update([
             'role'        => $request->role,
-            'boutique_id' => $request->role === 'admin' ? null : ($request->boutique_id ?? $user->boutique_id),
+            'boutique_id' => in_array($request->role, ['admin', 'saisisseur']) ? null : ($request->boutique_id ?? $user->boutique_id),
         ]);
 
         return response()->json([

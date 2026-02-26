@@ -82,4 +82,14 @@ class User extends Authenticatable
     {
         $this->notify(new ResetPasswordNotification($token));
     }
+
+    public function isSaisisseur()
+{
+    return $this->role === 'saisisseur';
+}
+
+public function scopeSaisisseurs($query)
+{
+    return $query->where('role', 'saisisseur');
+}
 }
