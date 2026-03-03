@@ -8,24 +8,62 @@ use Illuminate\Http\Request;
 
 class DepenseController extends Controller
 {
-    public function index(Request $request)
-    {
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
+   public function index(Request $request)
+{
+    $boutiqueId = $request->user()->isAdmin()
+        ? $request->input('boutique_id')
+        : $request->user()->boutique_id;
 
-        $perPage = $request->input('per_page', 15);
-        $query   = Depense::query();
+    $perPage = $request->input('per_page', 15);
+    $query   = Depense::with('boutique');
 
-        if ($boutiqueId) {
-            $query->where('boutique_id', $boutiqueId);
-        }
-
-        return response()->json(
-            $query->orderBy('date_depense', 'desc')->paginate($perPage)
-        );
+    if ($boutiqueId) {
+        $query->where('boutique_id', $boutiqueId);
     }
 
+    // Filtre par date exacte
+    if ($request->input('date')) {
+        $query->whereDate('date_depense', $request->input('date'));
+    }
+
+    // Filtre par semaine
+    if ($request->input('semaine')) {
+        $date = \Carbon\Carbon::parse($request->input('semaine'));
+        $query->whereBetween('date_depense', [
+            $date->copy()->startOfWeek(),
+            $date->copy()->endOfWeek(),
+        ]);
+    }
+
+    // Filtre par mois + année
+    if ($request->input('mois') && $request->input('annee')) {
+        $query->whereMonth('date_depense', $request->input('mois'))
+              ->whereYear('date_depense', $request->input('annee'));
+    }
+
+    // Filtre par année seule
+    if ($request->input('annee') && !$request->input('mois')) {
+        $query->whereYear('date_depense', $request->input('annee'));
+    }
+
+    // Filtre par catégorie
+    if ($request->input('categorie')) {
+        $query->where('categorie', $request->input('categorie'));
+    }
+
+    $totalDepenses = (clone $query)->count();
+    $sommeTotal    = (clone $query)->sum('montant');
+
+    $depenses = $query->orderBy('date_depense', 'desc')->paginate($perPage);
+
+    return response()->json([
+        'resume' => [
+            'total_depenses' => $totalDepenses,
+            'somme_totale'   => $sommeTotal,
+        ],
+        'depenses' => $depenses,
+    ]);
+}
 
     public function parDate(Request $request)
     {

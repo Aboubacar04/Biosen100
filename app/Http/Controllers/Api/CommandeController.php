@@ -374,15 +374,22 @@ class CommandeController extends Controller
     // 🗑️ SUPPRIMER UNE COMMANDE EN COURS
     // ─────────────────────────────────────────────────────────────────────────
     public function destroy(Commande $commande)
-    {
-        if ($commande->statut !== 'en_cours') {
-            return response()->json(['message' => 'Seules les commandes en cours peuvent être supprimées'], 400);
+{
+    DB::beginTransaction();
+    try {
+        $commande->produits()->detach();
+        if ($commande->facture) {
+            $commande->facture->delete();
         }
-
         $commande->delete();
+        DB::commit();
 
         return response()->json(['message' => 'Commande supprimée avec succès']);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json(['message' => 'Erreur lors de la suppression', 'error' => $e->getMessage()], 500);
     }
+}
 
     // ─────────────────────────────────────────────────────────────────────────
     // 🔍 RECHERCHE COMMANDES
