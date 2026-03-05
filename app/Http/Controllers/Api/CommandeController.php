@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Commande;
+use App\Models\Employe;
 use App\Models\Produit;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -11,9 +12,15 @@ use Illuminate\Support\Facades\DB;
 
 class CommandeController extends Controller
 {
-    // ─────────────────────────────────────────────────────────────────────────
-    // 📋 LISTE TOUTES LES COMMANDES
-    // ─────────────────────────────────────────────────────────────────────────
+    private function applyEmployeFilter(Request $request, $query)
+    {
+        $user = $request->user();
+        if ($user instanceof Employe) {
+            $query->where('employe_id', $user->id);
+        }
+        return $query;
+    }
+
     public function index(Request $request)
     {
         $boutiqueId = $request->user()->isAdmin()
@@ -44,6 +51,8 @@ class CommandeController extends Controller
             $query->whereYear('date_commande', $request->input('annee'));
         }
 
+        $this->applyEmployeFilter($request, $query);
+
         $totalCommandes = (clone $query)->count();
         $sommeTotal     = (clone $query)->where('statut', 'validee')->sum('total');
         $totalValidees  = (clone $query)->where('statut', 'validee')->sum('total');
@@ -66,9 +75,6 @@ class CommandeController extends Controller
         ]);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ⏳ COMMANDES EN COURS
-    // ─────────────────────────────────────────────────────────────────────────
     public function enCours(Request $request)
     {
         $boutiqueId = $request->user()->isAdmin()
@@ -80,12 +86,11 @@ class CommandeController extends Controller
 
         if ($boutiqueId) $query->where('boutique_id', $boutiqueId);
 
+        $this->applyEmployeFilter($request, $query);
+
         return response()->json($query->orderBy('created_at', 'desc')->paginate($perPage));
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ✅ COMMANDES VALIDÉES
-    // ─────────────────────────────────────────────────────────────────────────
     public function validees(Request $request)
     {
         $boutiqueId = $request->user()->isAdmin()
@@ -106,12 +111,11 @@ class CommandeController extends Controller
                 ->whereYear('date_validation',  $request->input('annee'));
         }
 
+        $this->applyEmployeFilter($request, $query);
+
         return response()->json($query->orderBy('date_validation', 'desc')->paginate($perPage));
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ❌ COMMANDES ANNULÉES
-    // ─────────────────────────────────────────────────────────────────────────
     public function annulees(Request $request)
     {
         $boutiqueId = $request->user()->isAdmin()
@@ -123,12 +127,11 @@ class CommandeController extends Controller
 
         if ($boutiqueId) $query->where('boutique_id', $boutiqueId);
 
+        $this->applyEmployeFilter($request, $query);
+
         return response()->json($query->orderBy('date_annulation', 'desc')->paginate($perPage));
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 📅 HISTORIQUE PAR DATE
-    // ─────────────────────────────────────────────────────────────────────────
     public function historique(Request $request)
     {
         $request->validate(['date' => 'required|date']);
@@ -143,6 +146,8 @@ class CommandeController extends Controller
             ->whereDate('date_commande', $request->date);
 
         if ($boutiqueId) $query->where('boutique_id', $boutiqueId);
+
+        $this->applyEmployeFilter($request, $query);
 
         $totalCommandes = (clone $query)->count();
         $sommeTotal     = (clone $query)->where('statut', 'validee')->sum('total');
@@ -165,21 +170,23 @@ class CommandeController extends Controller
         ]);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ➕ CRÉER UNE COMMANDE
-    // ─────────────────────────────────────────────────────────────────────────
     public function store(Request $request)
     {
         $user = auth()->user();
 
-        $boutiqueId = $user->role === 'admin'
+        $boutiqueId = $user->isAdmin()
             ? $request->boutique_id
             : $user->boutique_id;
 
+        // Si c'est un employé, force son employe_id
+        $employeId = ($user instanceof Employe)
+            ? $user->id
+            : $request->employe_id;
+
         $request->validate([
-            'boutique_id'              => $user->role === 'admin' ? 'required|exists:boutiques,id' : 'nullable',
+            'boutique_id'              => $user->isAdmin() ? 'required|exists:boutiques,id' : 'nullable',
             'client_id'                => 'nullable|exists:clients,id',
-            'employe_id'               => 'required|exists:employes,id',
+            'employe_id'               => ($user instanceof Employe) ? 'nullable' : 'required|exists:employes,id',
             'livreur_id'               => 'nullable|exists:livreurs,id',
             'type_commande'            => 'required|in:sur_place,livraison',
             'notes'                    => 'nullable|string',
@@ -194,7 +201,7 @@ class CommandeController extends Controller
             $commande = Commande::create([
                 'boutique_id'   => $boutiqueId,
                 'client_id'     => $request->client_id,
-                'employe_id'    => $request->employe_id,
+                'employe_id'    => $employeId,
                 'livreur_id'    => $request->livreur_id,
                 'type_commande' => $request->type_commande,
                 'notes'         => $request->notes,
@@ -230,9 +237,6 @@ class CommandeController extends Controller
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 👁️ AFFICHER UNE COMMANDE
-    // ─────────────────────────────────────────────────────────────────────────
     public function show(Commande $commande)
     {
         return response()->json(
@@ -240,9 +244,6 @@ class CommandeController extends Controller
         );
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ✅ VALIDER UNE COMMANDE
-    // ─────────────────────────────────────────────────────────────────────────
     public function valider(Commande $commande)
     {
         if ($commande->statut !== 'en_cours') {
@@ -288,9 +289,6 @@ class CommandeController extends Controller
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ❌ ANNULER UNE COMMANDE
-    // ─────────────────────────────────────────────────────────────────────────
     public function annuler(Request $request, Commande $commande)
     {
         $request->validate(['raison' => 'required|string']);
@@ -310,9 +308,6 @@ class CommandeController extends Controller
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ✏️ MODIFIER UNE COMMANDE EN COURS
-    // ─────────────────────────────────────────────────────────────────────────
     public function update(Request $request, Commande $commande)
     {
         if ($commande->statut !== 'en_cours') {
@@ -370,30 +365,24 @@ class CommandeController extends Controller
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 🗑️ SUPPRIMER UNE COMMANDE EN COURS
-    // ─────────────────────────────────────────────────────────────────────────
     public function destroy(Commande $commande)
-{
-    DB::beginTransaction();
-    try {
-        $commande->produits()->detach();
-        if ($commande->facture) {
-            $commande->facture->delete();
+    {
+        DB::beginTransaction();
+        try {
+            $commande->produits()->detach();
+            if ($commande->facture) {
+                $commande->facture->delete();
+            }
+            $commande->delete();
+            DB::commit();
+
+            return response()->json(['message' => 'Commande supprimée avec succès']);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Erreur lors de la suppression', 'error' => $e->getMessage()], 500);
         }
-        $commande->delete();
-        DB::commit();
-
-        return response()->json(['message' => 'Commande supprimée avec succès']);
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json(['message' => 'Erreur lors de la suppression', 'error' => $e->getMessage()], 500);
     }
-}
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 🔍 RECHERCHE COMMANDES
-    // ─────────────────────────────────────────────────────────────────────────
     public function search(Request $request)
     {
         $search = $request->input('search', '');
@@ -406,6 +395,8 @@ class CommandeController extends Controller
         if ($boutiqueId) {
             $query->where('boutique_id', $boutiqueId);
         }
+
+        $this->applyEmployeFilter($request, $query);
 
         if ($search) {
             $query->where(function ($q) use ($search) {

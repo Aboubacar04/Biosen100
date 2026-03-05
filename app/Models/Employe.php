@@ -3,27 +3,30 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Laravel\Sanctum\HasApiTokens;
 
-class Employe extends Model
+class Employe extends Authenticatable
 {
-    use HasFactory;
+    use HasApiTokens, HasFactory;
 
     protected $fillable = [
         'nom',
         'telephone',
+        'code_pin',
         'photo',
         'boutique_id',
         'actif',
+    ];
+
+    protected $hidden = [
+        'code_pin',
     ];
 
     protected $casts = [
         'actif' => 'boolean',
     ];
 
-    /**
-     * Relations
-     */
     public function boutique()
     {
         return $this->belongsTo(Boutique::class);
@@ -34,11 +37,22 @@ class Employe extends Model
         return $this->hasMany(Commande::class);
     }
 
-    /**
-     * Scopes
-     */
     public function scopeActifs($query)
     {
         return $query->where('actif', true);
     }
+
+    public function isAdmin(): bool
+    {
+        return false;
+    }
+    public function isGerant(): bool
+{
+    return false;
+}
+
+public function isSaisisseur(): bool
+{
+    return false;
+}
 }
