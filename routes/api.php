@@ -31,6 +31,8 @@ Route::prefix('auth')->group(function () {
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/reset-password',  [AuthController::class, 'resetPassword']);
     Route::post('/employe/login', [App\Http\Controllers\Api\EmployeAuthController::class, 'login']);
+    Route::post('/livreur/login', [App\Http\Controllers\Api\LivreurAuthController::class, 'login']);
+    Route::post('/distributeur/login', [App\Http\Controllers\Api\DistributeurAuthController::class, 'login']);
 });
 
 // ========================================
@@ -169,6 +171,17 @@ Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(
         Route::post('/{commande}/valider', [CommandeController::class, 'valider']);
         Route::post('/{commande}/annuler', [CommandeController::class, 'annuler']);
     });
+
+    // ----------------------------------------
+    // 🚚 LIVRAISONS
+    // ----------------------------------------
+    Route::get('/livraisons/en-attente', [App\Http\Controllers\Api\LivraisonController::class, 'enAttente']);
+    Route::get('/livraisons/toutes', [App\Http\Controllers\Api\LivraisonController::class, 'toutesLivraisons']);
+    Route::post('/livraisons/{commande}/assigner', [App\Http\Controllers\Api\LivraisonController::class, 'assigner']);
+    Route::get('/livraisons/mes-livraisons', [App\Http\Controllers\Api\LivraisonController::class, 'mesLivraisons']);
+    Route::post('/livraisons/{commande}/livree', [App\Http\Controllers\Api\LivraisonController::class, 'marquerLivree']);
+    Route::get('/livraisons/livreurs', [App\Http\Controllers\Api\LivraisonController::class, 'livreurs']);
+
 
     // ----------------------------------------
     // 📦 GAMMES

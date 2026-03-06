@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
-class Livreur extends Authenticatable
+class Distributeur extends Authenticatable
 {
     use HasApiTokens, HasFactory;
 
@@ -14,9 +14,7 @@ class Livreur extends Authenticatable
         'nom',
         'telephone',
         'code_pin',
-        'photo',
         'boutique_id',
-        'disponible',
         'actif',
     ];
 
@@ -25,18 +23,12 @@ class Livreur extends Authenticatable
     ];
 
     protected $casts = [
-        'disponible' => 'boolean',
         'actif' => 'boolean',
     ];
 
     public function boutique()
     {
         return $this->belongsTo(Boutique::class);
-    }
-
-    public function commandes()
-    {
-        return $this->hasMany(Commande::class);
     }
 
     public function isAdmin(): bool

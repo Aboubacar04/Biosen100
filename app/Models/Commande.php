@@ -24,13 +24,16 @@ class Commande extends Model
         'raison_annulation',      // ✅ NOUVEAU
         'annulee_par',            // ✅ NOUVEAU
         'notes',
+        'statut_livraison',
+        'date_livraison',
     ];
 
     protected $casts = [
         'total' => 'decimal:2',
         'date_commande' => 'date',
         'date_validation' => 'datetime',
-        'date_annulation' => 'datetime',  // ✅ NOUVEAU
+        'date_annulation' => 'datetime', 
+        'date_livraison' => 'datetime', // ✅ NOUVEAU
     ];
 
     /**
@@ -113,23 +116,25 @@ class Commande extends Model
      */
     public function valider()
     {
-        // Vérifier que la commande est en cours
         if ($this->statut !== 'en_cours') {
             throw new \Exception('Seules les commandes en cours peuvent être validées');
         }
 
-        // Mettre à jour le statut
-        $this->update([
+        $data = [
             'statut' => 'validee',
             'date_validation' => now(),
-        ]);
+        ];
 
-        // Décrémenter le stock de chaque produit
+        if ($this->type_commande === 'livraison') {
+            $data['statut_livraison'] = 'en_attente';
+        }
+
+        $this->update($data);
+
         foreach ($this->produits as $produit) {
             $produit->decrementerStock($produit->pivot->quantite);
         }
 
-        // Générer la facture
         $this->genererFacture();
 
         return $this;
