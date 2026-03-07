@@ -15,7 +15,7 @@ class LivraisonController extends Controller
     {
         $boutiqueId = $request->user()->boutique_id;
 
-        $query = Commande::with(['client', 'employe', 'livreur', 'boutique'])
+        $query = Commande::with(['client', 'employe', 'livreur', 'boutique', 'produits'])
             ->where('statut', 'validee')
             ->where('type_commande', 'livraison')
             ->where(function ($q) {
@@ -37,12 +37,10 @@ class LivraisonController extends Controller
 
         if ($boutiqueId) $baseQuery->where('boutique_id', $boutiqueId);
 
-        // Filtre date optionnel
         if ($request->input('date')) {
             $baseQuery->whereDate('date_commande', $request->input('date'));
         }
 
-        // Résumé TOUJOURS sur la query de base sans filtre statut
         $total = (clone $baseQuery)->count();
         $enAttente = (clone $baseQuery)->where(function ($q) {
             $q->whereNull('statut_livraison')
@@ -51,8 +49,7 @@ class LivraisonController extends Controller
         $assignees = (clone $baseQuery)->where('statut_livraison', 'assignee')->count();
         $livrees = (clone $baseQuery)->where('statut_livraison', 'livree')->count();
 
-        // Query filtrée pour la liste
-        $filteredQuery = Commande::with(['client', 'employe', 'livreur', 'boutique'])
+        $filteredQuery = Commande::with(['client', 'employe', 'livreur', 'boutique', 'produits'])
             ->where('statut', 'validee')
             ->where('type_commande', 'livraison');
 
@@ -111,7 +108,7 @@ class LivraisonController extends Controller
 
         return response()->json([
             'message' => 'Livreur assigné avec succès',
-            'commande' => $commande->fresh()->load(['client', 'livreur', 'boutique']),
+            'commande' => $commande->fresh()->load(['client', 'livreur', 'boutique', 'produits']),
         ]);
     }
 
@@ -123,17 +120,15 @@ class LivraisonController extends Controller
             return response()->json(['message' => 'Accès réservé aux livreurs'], 403);
         }
 
-        // Toutes les commandes assignées non livrées (pas de filtre date)
-        $aLivrer = Commande::with(['client', 'employe', 'boutique'])
+        $aLivrer = Commande::with(['client', 'employe', 'boutique', 'produits'])
             ->where('livreur_id', $user->id)
             ->where('statut', 'validee')
             ->where('statut_livraison', 'assignee')
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Livrées aujourd'hui
         $date = $request->input('date', Carbon::today()->format('Y-m-d'));
-        $livrees = Commande::with(['client', 'employe', 'boutique'])
+        $livrees = Commande::with(['client', 'employe', 'boutique', 'produits'])
             ->where('livreur_id', $user->id)
             ->where('statut_livraison', 'livree')
             ->whereDate('date_livraison', $date)
@@ -168,16 +163,9 @@ class LivraisonController extends Controller
         $commande->date_livraison = Carbon::now();
         $commande->save();
 
-        Log::info('Commande livrée', [
-            'commande_id' => $commande->id,
-            'livreur_id' => $user->id,
-            'statut_livraison' => $commande->statut_livraison,
-            'date_livraison' => $commande->date_livraison,
-        ]);
-
         return response()->json([
             'message' => 'Commande marquée comme livrée',
-            'commande' => $commande->fresh()->load(['client', 'boutique']),
+            'commande' => $commande->fresh()->load(['client', 'boutique', 'produits']),
         ]);
     }
 

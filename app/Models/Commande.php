@@ -24,6 +24,7 @@ class Commande extends Model
         'raison_annulation',      // ✅ NOUVEAU
         'annulee_par',            // ✅ NOUVEAU
         'notes',
+        'numero_gp',
         'statut_livraison',
         'date_livraison',
     ];

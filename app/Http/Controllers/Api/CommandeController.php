@@ -21,16 +21,44 @@ class CommandeController extends Controller
         return $query;
     }
 
+    private function getBoutiqueId(Request $request): ?int
+    {
+        $user = $request->user();
+        if ($user instanceof Employe) {
+            return $user->boutique_id;
+        }
+        return $user->isAdmin()
+            ? $request->input('boutique_id')
+            : $user->boutique_id;
+    }
+
+    private function emptyResponse(array $resume = [], $paginated = false)
+    {
+        return response()->json([
+            'resume' => array_merge([
+                'total_commandes' => 0,
+                'somme_totale' => 0,
+                'total_validees' => 0,
+                'nb_validees' => 0,
+                'nb_en_cours' => 0,
+                'nb_annulees' => 0,
+            ], $resume),
+            'commandes' => $paginated ? ['data' => [], 'total' => 0, 'current_page' => 1, 'last_page' => 1] : [],
+        ]);
+    }
+
     public function index(Request $request)
     {
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
+        $boutiqueId = $this->getBoutiqueId($request);
+
+        if (!$boutiqueId && $request->user()->isAdmin()) {
+            return $this->emptyResponse();
+        }
 
         $perPage = $request->input('per_page', 15);
-        $query   = Commande::with(['client', 'employe', 'livreur', 'boutique']);
+        $query = Commande::with(['client', 'employe', 'livreur', 'boutique'])
+            ->where('boutique_id', $boutiqueId);
 
-        if ($boutiqueId)               $query->where('boutique_id', $boutiqueId);
         if ($request->input('statut')) $query->where('statut', $request->input('statut'));
         if ($request->input('date'))   $query->whereDate('date_commande', $request->input('date'));
 
@@ -77,14 +105,15 @@ class CommandeController extends Controller
 
     public function enCours(Request $request)
     {
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
+        $boutiqueId = $this->getBoutiqueId($request);
+
+        if (!$boutiqueId && $request->user()->isAdmin()) {
+            return response()->json(['data' => [], 'total' => 0, 'current_page' => 1, 'last_page' => 1]);
+        }
 
         $perPage = $request->input('per_page', 15);
-        $query   = Commande::enCours()->with(['client', 'employe', 'livreur', 'produits']);
-
-        if ($boutiqueId) $query->where('boutique_id', $boutiqueId);
+        $query = Commande::enCours()->with(['client', 'employe', 'livreur', 'produits'])
+            ->where('boutique_id', $boutiqueId);
 
         $this->applyEmployeFilter($request, $query);
 
@@ -93,14 +122,15 @@ class CommandeController extends Controller
 
     public function validees(Request $request)
     {
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
+        $boutiqueId = $this->getBoutiqueId($request);
+
+        if (!$boutiqueId && $request->user()->isAdmin()) {
+            return response()->json(['data' => [], 'total' => 0, 'current_page' => 1, 'last_page' => 1]);
+        }
 
         $perPage = $request->input('per_page', 15);
-        $query   = Commande::validees()->with(['client', 'employe', 'livreur', 'facture']);
-
-        if ($boutiqueId) $query->where('boutique_id', $boutiqueId);
+        $query = Commande::validees()->with(['client', 'employe', 'livreur', 'facture'])
+            ->where('boutique_id', $boutiqueId);
 
         if ($request->input('date')) {
             $query->whereDate('date_validation', $request->input('date'));
@@ -108,7 +138,7 @@ class CommandeController extends Controller
 
         if ($request->input('mois') && $request->input('annee')) {
             $query->whereMonth('date_validation', $request->input('mois'))
-                ->whereYear('date_validation',  $request->input('annee'));
+                ->whereYear('date_validation', $request->input('annee'));
         }
 
         $this->applyEmployeFilter($request, $query);
@@ -118,14 +148,15 @@ class CommandeController extends Controller
 
     public function annulees(Request $request)
     {
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
+        $boutiqueId = $this->getBoutiqueId($request);
+
+        if (!$boutiqueId && $request->user()->isAdmin()) {
+            return response()->json(['data' => [], 'total' => 0, 'current_page' => 1, 'last_page' => 1]);
+        }
 
         $perPage = $request->input('per_page', 15);
-        $query   = Commande::annulees()->with(['client', 'employe', 'annuleePar']);
-
-        if ($boutiqueId) $query->where('boutique_id', $boutiqueId);
+        $query = Commande::annulees()->with(['client', 'employe', 'annuleePar'])
+            ->where('boutique_id', $boutiqueId);
 
         $this->applyEmployeFilter($request, $query);
 
@@ -136,16 +167,16 @@ class CommandeController extends Controller
     {
         $request->validate(['date' => 'required|date']);
 
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
+        $boutiqueId = $this->getBoutiqueId($request);
+
+        if (!$boutiqueId && $request->user()->isAdmin()) {
+            return $this->emptyResponse(['date' => $request->date]);
+        }
 
         $perPage = $request->input('per_page', 15);
-
         $query = Commande::with(['client', 'employe', 'livreur'])
+            ->where('boutique_id', $boutiqueId)
             ->whereDate('date_commande', $request->date);
-
-        if ($boutiqueId) $query->where('boutique_id', $boutiqueId);
 
         $this->applyEmployeFilter($request, $query);
 
@@ -178,7 +209,6 @@ class CommandeController extends Controller
             ? $request->boutique_id
             : $user->boutique_id;
 
-        // Si c'est un employé, force son employe_id
         $employeId = ($user instanceof Employe)
             ? $user->id
             : $request->employe_id;
@@ -190,6 +220,7 @@ class CommandeController extends Controller
             'livreur_id'               => 'nullable|exists:livreurs,id',
             'type_commande'            => 'required|in:sur_place,livraison',
             'notes'                    => 'nullable|string',
+            'numero_gp'               => 'nullable|string|max:50',
             'produits'                 => 'required|array|min:1',
             'produits.*.produit_id'    => 'required|exists:produits,id',
             'produits.*.quantite'      => 'required|integer|min:1',
@@ -205,6 +236,7 @@ class CommandeController extends Controller
                 'livreur_id'    => $request->livreur_id,
                 'type_commande' => $request->type_commande,
                 'notes'         => $request->notes,
+                'numero_gp'    => $request->numero_gp,
                 'total'         => 0,
             ]);
 
@@ -320,6 +352,7 @@ class CommandeController extends Controller
             'livreur_id'               => 'nullable|exists:livreurs,id',
             'type_commande'            => 'sometimes|in:sur_place,livraison',
             'notes'                    => 'nullable|string',
+            'numero_gp'               => 'nullable|string|max:50',
             'produits'                 => 'sometimes|array|min:1',
             'produits.*.produit_id'    => 'required|exists:produits,id',
             'produits.*.quantite'      => 'required|integer|min:1',
@@ -329,7 +362,7 @@ class CommandeController extends Controller
         DB::beginTransaction();
         try {
             $commande->update($request->only([
-                'client_id', 'employe_id', 'livreur_id', 'type_commande', 'notes'
+                'client_id', 'employe_id', 'livreur_id', 'type_commande', 'notes', 'numero_gp'
             ]));
 
             if ($request->has('produits')) {
@@ -385,16 +418,14 @@ class CommandeController extends Controller
 
     public function search(Request $request)
     {
-        $search = $request->input('search', '');
-        $boutiqueId = $request->user()->isAdmin()
-            ? $request->input('boutique_id')
-            : $request->user()->boutique_id;
+        $boutiqueId = $this->getBoutiqueId($request);
 
-        $query = Commande::query();
-
-        if ($boutiqueId) {
-            $query->where('boutique_id', $boutiqueId);
+        if (!$boutiqueId && $request->user()->isAdmin()) {
+            return response()->json(['data' => [], 'total' => 0, 'current_page' => 1, 'last_page' => 1]);
         }
+
+        $search = $request->input('search', '');
+        $query = Commande::where('boutique_id', $boutiqueId);
 
         $this->applyEmployeFilter($request, $query);
 
