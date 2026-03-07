@@ -221,6 +221,7 @@ class CommandeController extends Controller
             'type_commande'            => 'required|in:sur_place,livraison',
             'notes'                    => 'nullable|string',
             'numero_gp'               => 'nullable|string|max:50',
+            'paye'                    => 'nullable|boolean',
             'produits'                 => 'required|array|min:1',
             'produits.*.produit_id'    => 'required|exists:produits,id',
             'produits.*.quantite'      => 'required|integer|min:1',
@@ -236,6 +237,7 @@ class CommandeController extends Controller
                 'livreur_id'    => $request->livreur_id,
                 'type_commande' => $request->type_commande,
                 'notes'         => $request->notes,
+                'paye' => $request->boolean('paye', false),
                 'numero_gp'    => $request->numero_gp,
                 'total'         => 0,
             ]);
@@ -354,6 +356,7 @@ class CommandeController extends Controller
             'notes'                    => 'nullable|string',
             'numero_gp'               => 'nullable|string|max:50',
             'produits'                 => 'sometimes|array|min:1',
+            'paye' => 'nullable|boolean',
             'produits.*.produit_id'    => 'required|exists:produits,id',
             'produits.*.quantite'      => 'required|integer|min:1',
             'produits.*.prix_unitaire' => 'nullable|numeric|min:0',
@@ -361,9 +364,9 @@ class CommandeController extends Controller
 
         DB::beginTransaction();
         try {
-            $commande->update($request->only([
-                'client_id', 'employe_id', 'livreur_id', 'type_commande', 'notes', 'numero_gp'
-            ]));
+           $commande->update($request->only([
+    'client_id', 'employe_id', 'livreur_id', 'type_commande', 'notes', 'numero_gp', 'paye'
+]));
 
             if ($request->has('produits')) {
                 $commande->produits()->detach();

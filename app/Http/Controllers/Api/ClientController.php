@@ -81,41 +81,45 @@ class ClientController extends Controller
         return response()->json($client);
     }
 
-    public function store(Request $request)
-    {
-        $user = $request->user();
-        $boutiqueId = $user->isAdmin() ? $request->boutique_id : $user->boutique_id;
+   public function store(Request $request)
+{
+    $request->validate([
+        'nom_complet' => 'required|string',
+        'telephone'   => 'required|string',
+        'adresse'     => 'nullable|string',
+        'boutique_id' => 'nullable|exists:boutiques,id',
+    ]);
 
-        $request->validate([
-            'nom_complet' => 'required|string|max:255',
-            'telephone'   => 'required|string|max:20',
-            'adresse'     => 'nullable|string',
-            'boutique_id' => $user->isAdmin() ? 'required|exists:boutiques,id' : 'nullable',
-        ]);
+    $boutiqueId = $request->user()->isAdmin()
+        ? $request->boutique_id
+        : $request->user()->boutique_id;
 
-        $telephoneClean = $this->normalizePhone($request->telephone);
+    // Si le téléphone existe déjà dans cette boutique → retourner le client existant
+    $existing = \App\Models\Client::where('telephone', $request->telephone)
+        ->where('boutique_id', $boutiqueId)
+        ->first();
 
-        // Vérification globale : le numéro existe déjà dans TOUTE la base
-        $exists = Client::where('telephone', $telephoneClean)->exists();
-
-        if ($exists) {
-            return response()->json([
-                'message' => 'Ce numéro de téléphone existe déjà.',
-                'errors' => [
-                    'telephone' => ['Ce numéro de téléphone est déjà utilisé par un autre client.']
-                ]
-            ], 422);
-        }
-
-        $client = Client::create([
-            'nom_complet' => $request->nom_complet,
-            'telephone'   => $telephoneClean,
-            'adresse'     => $request->adresse,
-            'boutique_id' => $boutiqueId,
-        ]);
-
-        return response()->json(['message' => 'Client créé avec succès', 'client' => $client], 201);
+    if ($existing) {
+        return response()->json([
+            'message' => 'Client existant sélectionné',
+            'client'  => $existing,
+            'existed' => true,
+        ], 200);
     }
+
+    $client = \App\Models\Client::create([
+        'nom_complet' => $request->nom_complet,
+        'telephone'   => $request->telephone,
+        'adresse'     => $request->adresse,
+        'boutique_id' => $boutiqueId,
+    ]);
+
+    return response()->json([
+        'message' => 'Client créé avec succès',
+        'client'  => $client,
+        'existed' => false,
+    ], 201);
+}
 
     public function show(Client $client)
     {

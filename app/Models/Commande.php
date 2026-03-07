@@ -25,6 +25,7 @@ class Commande extends Model
         'annulee_par',            // ✅ NOUVEAU
         'notes',
         'numero_gp',
+        'paye',
         'statut_livraison',
         'date_livraison',
     ];
@@ -35,6 +36,7 @@ class Commande extends Model
         'date_validation' => 'datetime',
         'date_annulation' => 'datetime', 
         'date_livraison' => 'datetime', // ✅ NOUVEAU
+        'paye' => 'boolean',
     ];
 
     /**
