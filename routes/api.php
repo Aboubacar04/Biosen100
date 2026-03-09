@@ -15,6 +15,8 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\GammeController;
 use App\Http\Controllers\Api\CommandeBisenController;
+use App\Http\Controllers\Api\SuperviseurAuthController;
+use App\Http\Controllers\Api\SuperviseurController;
 
 /*
 |--------------------------------------------------------------------------
@@ -33,6 +35,16 @@ Route::prefix('auth')->group(function () {
     Route::post('/employe/login', [App\Http\Controllers\Api\EmployeAuthController::class, 'login']);
     Route::post('/livreur/login', [App\Http\Controllers\Api\LivreurAuthController::class, 'login']);
     Route::post('/distributeur/login', [App\Http\Controllers\Api\DistributeurAuthController::class, 'login']);
+    Route::post('/superviseur/login', [SuperviseurAuthController::class, 'login']);
+});
+
+// ========================================
+// 👁️ SUPERVISEUR (lecture seule, pas de boutique.active)
+// ========================================
+
+Route::middleware(['auth:sanctum'])->prefix('superviseur')->group(function () {
+    Route::get('/commandes', [SuperviseurController::class, 'commandesDuJour']);
+    Route::post('/logout', [SuperviseurAuthController::class, 'logout']);
 });
 
 // ========================================
@@ -181,7 +193,6 @@ Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(
     Route::get('/livraisons/mes-livraisons', [App\Http\Controllers\Api\LivraisonController::class, 'mesLivraisons']);
     Route::post('/livraisons/{commande}/livree', [App\Http\Controllers\Api\LivraisonController::class, 'marquerLivree']);
     Route::get('/livraisons/livreurs', [App\Http\Controllers\Api\LivraisonController::class, 'livreurs']);
-
 
     // ----------------------------------------
     // 📦 GAMMES
