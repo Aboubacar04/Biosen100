@@ -11,74 +11,79 @@ use Illuminate\Support\Facades\Log;
 
 class LivraisonController extends Controller
 {
-    public function enAttente(Request $request)
-    {
-        $boutiqueId = $request->user()->boutique_id;
-
-        $query = Commande::with(['client', 'employe', 'livreur', 'boutique', 'produits'])
-            ->where('statut', 'validee')
-            ->where('type_commande', 'livraison')
-            ->where(function ($q) {
-                $q->whereNull('statut_livraison')
-                  ->orWhere('statut_livraison', 'en_attente');
-            });
-
-        if ($boutiqueId) $query->where('boutique_id', $boutiqueId);
-
-        return response()->json($query->orderBy('created_at', 'desc')->get());
-    }
-
     public function toutesLivraisons(Request $request)
     {
         $boutiqueId = $request->user()->boutique_id;
+        $date = $request->input('date', Carbon::today()->format('Y-m-d'));
+        $today = Carbon::today()->format('Y-m-d');
 
-        $baseQuery = Commande::where('statut', 'validee')
+        // ── Base query pour le jour sélectionné ──
+        $dayBase = Commande::where('statut', 'validee')
             ->where('type_commande', 'livraison');
+        if ($boutiqueId) $dayBase->where('boutique_id', $boutiqueId);
+        $dayBase->whereDate('date_commande', $date);
 
-        if ($boutiqueId) $baseQuery->where('boutique_id', $boutiqueId);
-
-        if ($request->input('date')) {
-            $baseQuery->whereDate('date_commande', $request->input('date'));
-        }
-
-        $total = (clone $baseQuery)->count();
-        $enAttente = (clone $baseQuery)->where(function ($q) {
-            $q->whereNull('statut_livraison')
-              ->orWhere('statut_livraison', 'en_attente');
+        $total = (clone $dayBase)->count();
+        $enAttente = (clone $dayBase)->where(function ($q) {
+            $q->whereNull('statut_livraison')->orWhere('statut_livraison', 'en_attente');
         })->count();
-        $assignees = (clone $baseQuery)->where('statut_livraison', 'assignee')->count();
-        $livrees = (clone $baseQuery)->where('statut_livraison', 'livree')->count();
+        $assignees = (clone $dayBase)->where('statut_livraison', 'assignee')->count();
+        $livrees = (clone $dayBase)->where('statut_livraison', 'livree')->count();
 
-        $filteredQuery = Commande::with(['client', 'employe', 'livreur', 'boutique', 'produits'])
-            ->where('statut', 'validee')
-            ->where('type_commande', 'livraison');
+        // ── En retard = jours précédents, non livrées ──
+        $enRetardQuery = Commande::where('statut', 'validee')
+            ->where('type_commande', 'livraison')
+            ->whereDate('date_commande', '<', $today)
+            ->where(function ($q) {
+                $q->whereNull('statut_livraison')
+                  ->orWhere('statut_livraison', 'en_attente')
+                  ->orWhere('statut_livraison', 'assignee');
+            });
+        if ($boutiqueId) $enRetardQuery->where('boutique_id', $boutiqueId);
+        $enRetardCount = (clone $enRetardQuery)->count();
 
-        if ($boutiqueId) $filteredQuery->where('boutique_id', $boutiqueId);
-
-        if ($request->input('date')) {
-            $filteredQuery->whereDate('date_commande', $request->input('date'));
-        }
-
+        // ── Liste filtrée ──
         $statutFilter = $request->input('statut_livraison');
-        if ($statutFilter) {
-            if ($statutFilter === 'en_attente') {
-                $filteredQuery->where(function ($q) {
+
+        if ($statutFilter === 'en_retard') {
+            $commandes = Commande::with(['client', 'employe', 'livreur', 'boutique', 'produits'])
+                ->where('statut', 'validee')
+                ->where('type_commande', 'livraison')
+                ->whereDate('date_commande', '<', $today)
+                ->where(function ($q) {
                     $q->whereNull('statut_livraison')
-                      ->orWhere('statut_livraison', 'en_attente');
+                      ->orWhere('statut_livraison', 'en_attente')
+                      ->orWhere('statut_livraison', 'assignee');
                 });
-            } else {
-                $filteredQuery->where('statut_livraison', $statutFilter);
+            if ($boutiqueId) $commandes->where('boutique_id', $boutiqueId);
+            $commandes = $commandes->orderBy('date_commande', 'asc')->get();
+        } else {
+            $commandes = Commande::with(['client', 'employe', 'livreur', 'boutique', 'produits'])
+                ->where('statut', 'validee')
+                ->where('type_commande', 'livraison')
+                ->whereDate('date_commande', $date);
+            if ($boutiqueId) $commandes->where('boutique_id', $boutiqueId);
+
+            if ($statutFilter === 'en_attente') {
+                $commandes->where(function ($q) {
+                    $q->whereNull('statut_livraison')->orWhere('statut_livraison', 'en_attente');
+                });
+            } elseif ($statutFilter) {
+                $commandes->where('statut_livraison', $statutFilter);
             }
+
+            $commandes = $commandes->orderBy('created_at', 'desc')->get();
         }
 
         return response()->json([
             'resume' => [
-                'total' => $total,
+                'total'      => $total,
                 'en_attente' => $enAttente,
-                'assignees' => $assignees,
-                'livrees' => $livrees,
+                'assignees'  => $assignees,
+                'livrees'    => $livrees,
+                'en_retard'  => $enRetardCount,
             ],
-            'commandes' => $filteredQuery->orderBy('created_at', 'desc')->get(),
+            'commandes' => $commandes,
         ]);
     }
 
@@ -100,12 +105,6 @@ class LivraisonController extends Controller
         $commande->statut_livraison = 'assignee';
         $commande->save();
 
-        Log::info('Commande assignée', [
-            'commande_id' => $commande->id,
-            'livreur_id' => $commande->livreur_id,
-            'statut_livraison' => $commande->statut_livraison,
-        ]);
-
         return response()->json([
             'message' => 'Livreur assigné avec succès',
             'commande' => $commande->fresh()->load(['client', 'livreur', 'boutique', 'produits']),
@@ -120,14 +119,19 @@ class LivraisonController extends Controller
             return response()->json(['message' => 'Accès réservé aux livreurs'], 403);
         }
 
+        $date = $request->input('date', Carbon::today()->format('Y-m-d'));
+        $today = Carbon::today()->format('Y-m-d');
+
+        // À livrer = assignées ce jour, pas encore livrées
         $aLivrer = Commande::with(['client', 'employe', 'boutique', 'produits'])
             ->where('livreur_id', $user->id)
             ->where('statut', 'validee')
             ->where('statut_livraison', 'assignee')
+            ->whereDate('date_commande', $date)
             ->orderBy('created_at', 'desc')
             ->get();
 
-        $date = $request->input('date', Carbon::today()->format('Y-m-d'));
+        // Livrées = livrées à cette date
         $livrees = Commande::with(['client', 'employe', 'boutique', 'produits'])
             ->where('livreur_id', $user->id)
             ->where('statut_livraison', 'livree')
@@ -135,15 +139,27 @@ class LivraisonController extends Controller
             ->orderBy('date_livraison', 'desc')
             ->get();
 
+        // En retard = assignées des jours précédents, toujours pas livrées
+        $enRetard = Commande::with(['client', 'employe', 'boutique', 'produits'])
+            ->where('livreur_id', $user->id)
+            ->where('statut', 'validee')
+            ->where('statut_livraison', 'assignee')
+            ->whereDate('date_commande', '<', $today)
+            ->orderBy('date_commande', 'asc')
+            ->get();
+
         return response()->json([
             'resume' => [
-                'a_livrer' => $aLivrer->count(),
-                'livrees' => $livrees->count(),
-                'total_a_livrer' => $aLivrer->sum('total'),
-                'total_livrees' => $livrees->sum('total'),
+                'a_livrer'        => $aLivrer->count(),
+                'livrees'         => $livrees->count(),
+                'en_retard'       => $enRetard->count(),
+                'total_a_livrer'  => $aLivrer->sum('total'),
+                'total_livrees'   => $livrees->sum('total'),
+                'total_en_retard' => $enRetard->sum('total'),
             ],
-            'a_livrer' => $aLivrer,
-            'livrees' => $livrees,
+            'a_livrer'  => $aLivrer,
+            'livrees'   => $livrees,
+            'en_retard' => $enRetard,
         ]);
     }
 
