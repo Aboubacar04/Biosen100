@@ -177,6 +177,7 @@ class LivraisonController extends Controller
 
         $commande->statut_livraison = 'livree';
         $commande->date_livraison = Carbon::now();
+        $commande->paye = true;
         $commande->save();
 
         return response()->json([
