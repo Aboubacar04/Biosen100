@@ -7,7 +7,6 @@ use App\Models\Commande;
 use App\Models\Livreur;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class LivraisonController extends Controller
 {
@@ -171,7 +170,7 @@ class LivraisonController extends Controller
 
         $commande->statut_livraison = 'livree';
         $commande->date_livraison = Carbon::now();
-        $commande->paye = true;
+        // On ne touche PAS au champ paye — il garde sa valeur d'origine
         $commande->save();
 
         return response()->json([
@@ -192,10 +191,8 @@ class LivraisonController extends Controller
             return response()->json(['message' => 'Cette commande n\'est pas marquée comme livrée'], 400);
         }
 
-        // Remettre en assignée
         $commande->statut_livraison = 'assignee';
         $commande->date_livraison = null;
-        $commande->paye = false;
         $commande->save();
 
         return response()->json([
