@@ -17,7 +17,6 @@ class LivraisonController extends Controller
         $date = $request->input('date', Carbon::today()->format('Y-m-d'));
         $today = Carbon::today()->format('Y-m-d');
 
-        // ── Base query pour le jour sélectionné ──
         $dayBase = Commande::where('statut', 'validee')
             ->where('type_commande', 'livraison');
         if ($boutiqueId) $dayBase->where('boutique_id', $boutiqueId);
@@ -30,7 +29,6 @@ class LivraisonController extends Controller
         $assignees = (clone $dayBase)->where('statut_livraison', 'assignee')->count();
         $livrees = (clone $dayBase)->where('statut_livraison', 'livree')->count();
 
-        // ── En retard = jours précédents, non livrées ──
         $enRetardQuery = Commande::where('statut', 'validee')
             ->where('type_commande', 'livraison')
             ->whereDate('date_commande', '<', $today)
@@ -42,7 +40,6 @@ class LivraisonController extends Controller
         if ($boutiqueId) $enRetardQuery->where('boutique_id', $boutiqueId);
         $enRetardCount = (clone $enRetardQuery)->count();
 
-        // ── Liste filtrée ──
         $statutFilter = $request->input('statut_livraison');
 
         if ($statutFilter === 'en_retard') {
@@ -122,7 +119,6 @@ class LivraisonController extends Controller
         $date = $request->input('date', Carbon::today()->format('Y-m-d'));
         $today = Carbon::today()->format('Y-m-d');
 
-        // À livrer = assignées ce jour, pas encore livrées
         $aLivrer = Commande::with(['client', 'employe', 'boutique', 'produits'])
             ->where('livreur_id', $user->id)
             ->where('statut', 'validee')
@@ -131,7 +127,6 @@ class LivraisonController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Livrées = livrées à cette date
         $livrees = Commande::with(['client', 'employe', 'boutique', 'produits'])
             ->where('livreur_id', $user->id)
             ->where('statut_livraison', 'livree')
@@ -139,7 +134,6 @@ class LivraisonController extends Controller
             ->orderBy('date_livraison', 'desc')
             ->get();
 
-        // En retard = assignées des jours précédents, toujours pas livrées
         $enRetard = Commande::with(['client', 'employe', 'boutique', 'produits'])
             ->where('livreur_id', $user->id)
             ->where('statut', 'validee')
@@ -182,6 +176,30 @@ class LivraisonController extends Controller
 
         return response()->json([
             'message' => 'Commande marquée comme livrée',
+            'commande' => $commande->fresh()->load(['client', 'boutique', 'produits']),
+        ]);
+    }
+
+    public function annulerLivraison(Request $request, Commande $commande)
+    {
+        $user = $request->user();
+
+        if ($user instanceof Livreur && $commande->livreur_id !== $user->id) {
+            return response()->json(['message' => 'Cette commande ne vous est pas assignée'], 403);
+        }
+
+        if ($commande->statut_livraison !== 'livree') {
+            return response()->json(['message' => 'Cette commande n\'est pas marquée comme livrée'], 400);
+        }
+
+        // Remettre en assignée
+        $commande->statut_livraison = 'assignee';
+        $commande->date_livraison = null;
+        $commande->paye = false;
+        $commande->save();
+
+        return response()->json([
+            'message' => 'Livraison annulée, commande remise en cours',
             'commande' => $commande->fresh()->load(['client', 'boutique', 'produits']),
         ]);
     }

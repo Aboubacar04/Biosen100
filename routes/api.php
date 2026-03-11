@@ -192,6 +192,7 @@ Route::middleware(['auth:sanctum', 'account.active', 'boutique.active'])->group(
     Route::post('/livraisons/{commande}/assigner', [App\Http\Controllers\Api\LivraisonController::class, 'assigner']);
     Route::get('/livraisons/mes-livraisons', [App\Http\Controllers\Api\LivraisonController::class, 'mesLivraisons']);
     Route::post('/livraisons/{commande}/livree', [App\Http\Controllers\Api\LivraisonController::class, 'marquerLivree']);
+    Route::post('/livraisons/{commande}/annuler-livraison', [App\Http\Controllers\Api\LivraisonController::class, 'annulerLivraison']);
     Route::get('/livraisons/livreurs', [App\Http\Controllers\Api\LivraisonController::class, 'livreurs']);
 
     // ----------------------------------------
