@@ -92,10 +92,20 @@ class LivraisonController extends Controller
             ->where('livreur_id', $user->id)->where('statut', 'validee')->where('statut_livraison', 'assignee')
             ->whereDate('date_commande', '<', $today)->orderBy('date_commande', 'asc')->get();
 
+        // Totaux paiement des livraisons du jour
+        $totalDejaPayeLivrees = $livrees->where('paye', true)->sum('total');
+        $totalEncaisseLivrees = $livrees->where('paye', false)->sum('total');
+
         return response()->json([
             'resume' => [
-                'a_livrer' => $aLivrer->count(), 'livrees' => $livrees->count(), 'en_retard' => $enRetard->count(),
-                'total_a_livrer' => $aLivrer->sum('total'), 'total_livrees' => $livrees->sum('total'), 'total_en_retard' => $enRetard->sum('total'),
+                'a_livrer'           => $aLivrer->count(),
+                'livrees'            => $livrees->count(),
+                'en_retard'          => $enRetard->count(),
+                'total_a_livrer'     => $aLivrer->sum('total'),
+                'total_livrees'      => $livrees->sum('total'),
+                'total_en_retard'    => $enRetard->sum('total'),
+                'total_deja_paye'    => $totalDejaPayeLivrees,
+                'total_encaisse'     => $totalEncaisseLivrees,
             ],
             'a_livrer' => $aLivrer, 'livrees' => $livrees, 'en_retard' => $enRetard,
         ]);
