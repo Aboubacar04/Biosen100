@@ -93,8 +93,8 @@ class LivraisonController extends Controller
             ->whereDate('date_commande', '<', $today)->orderBy('date_commande', 'asc')->get();
 
         // Totaux paiement des livraisons du jour
-        $totalDejaPayeLivrees = $livrees->where('paye', true)->sum('total');
-        $totalEncaisseLivrees = $livrees->where('paye', false)->sum('total');
+       $totalDejaPayeLivrees = $livrees->filter(fn($c) => $c->paye)->sum('total');
+       $totalEncaisseLivrees = $livrees->filter(fn($c) => !$c->paye)->sum('total');
 
         return response()->json([
             'resume' => [
