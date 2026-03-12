@@ -94,7 +94,7 @@ class LivraisonController extends Controller
 
         // Totaux paiement des livraisons du jour
        $totalDejaPayeLivrees = $livrees->filter(fn($c) => $c->paye)->sum('total');
-       $totalEncaisseLivrees = $livrees->filter(fn($c) => !$c->paye)->sum('total');
+        $totalEncaisseLivrees = $livrees->filter(fn($c) => !$c->paye)->sum('total');
 
         return response()->json([
             'resume' => [
@@ -118,7 +118,11 @@ class LivraisonController extends Controller
         if ($commande->statut_livraison !== 'assignee') return response()->json(['message' => 'Cette commande n\'est pas en cours de livraison'], 400);
 
         $commande->statut_livraison = 'livree';
-        $commande->date_livraison = Carbon::now();
+        if ($commande->date_commande < Carbon::today()->toDateString()) {
+    $commande->date_livraison = $commande->date_commande;
+} else {
+    $commande->date_livraison = Carbon::now();
+}
         $commande->paye = $request->boolean('paye', $commande->paye);
         $commande->save();
 
