@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Commande;
 use App\Models\Livreur;
+use App\Services\FcmNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -69,6 +70,16 @@ class LivraisonController extends Controller
         $commande->statut_livraison = 'assignee';
         $commande->save();
 
+        // Notification au livreur
+        try {
+            $fcm = new FcmNotificationService();
+            $commande->load('client');
+            $clientNom = $commande->client->nom_complet ?? 'Client';
+            $adresse = $commande->client->adresse ?? '';
+            $total = number_format($commande->total, 0, ',', '.') . ' F';
+            $fcm->envoyerAUtilisateur('livreur', $request->livreur_id, 'Nouvelle livraison', "{$clientNom} — {$adresse} — {$total}");
+        } catch (\Exception $e) {}
+
         return response()->json(['message' => 'Livreur assigné avec succès', 'commande' => $commande->fresh()->load(['client', 'livreur', 'boutique', 'produits'])]);
     }
 
@@ -92,20 +103,14 @@ class LivraisonController extends Controller
             ->where('livreur_id', $user->id)->where('statut', 'validee')->where('statut_livraison', 'assignee')
             ->whereDate('date_commande', '<', $today)->orderBy('date_commande', 'asc')->get();
 
-        // Totaux paiement des livraisons du jour
-       $totalDejaPayeLivrees = $livrees->filter(fn($c) => $c->paye)->sum('total');
+        $totalDejaPayeLivrees = $livrees->filter(fn($c) => $c->paye)->sum('total');
         $totalEncaisseLivrees = $livrees->filter(fn($c) => !$c->paye)->sum('total');
 
         return response()->json([
             'resume' => [
-                'a_livrer'           => $aLivrer->count(),
-                'livrees'            => $livrees->count(),
-                'en_retard'          => $enRetard->count(),
-                'total_a_livrer'     => $aLivrer->sum('total'),
-                'total_livrees'      => $livrees->sum('total'),
-                'total_en_retard'    => $enRetard->sum('total'),
-                'total_deja_paye'    => $totalDejaPayeLivrees,
-                'total_encaisse'     => $totalEncaisseLivrees,
+                'a_livrer' => $aLivrer->count(), 'livrees' => $livrees->count(), 'en_retard' => $enRetard->count(),
+                'total_a_livrer' => $aLivrer->sum('total'), 'total_livrees' => $livrees->sum('total'), 'total_en_retard' => $enRetard->sum('total'),
+                'total_deja_paye' => $totalDejaPayeLivrees, 'total_encaisse' => $totalEncaisseLivrees,
             ],
             'a_livrer' => $aLivrer, 'livrees' => $livrees, 'en_retard' => $enRetard,
         ]);
@@ -119,12 +124,23 @@ class LivraisonController extends Controller
 
         $commande->statut_livraison = 'livree';
         if ($commande->date_commande < Carbon::today()->toDateString()) {
-    $commande->date_livraison = $commande->date_commande;
-} else {
-    $commande->date_livraison = Carbon::now();
-}
+            $commande->date_livraison = $commande->date_commande;
+        } else {
+            $commande->date_livraison = Carbon::now();
+        }
         $commande->paye = $request->boolean('paye', $commande->paye);
         $commande->save();
+
+        // Notification aux distributeurs
+        try {
+            $fcm = new FcmNotificationService();
+            $livreurNom = $user->nom ?? 'Livreur';
+            $commande->load('client');
+            $clientNom = $commande->client->nom_complet ?? 'Client';
+            $total = number_format($commande->total, 0, ',', '.') . ' F';
+            $paiement = $request->boolean('paye') ? 'Déjà payé' : 'Encaissé';
+            $fcm->envoyerAuRole('distributeur', "{$livreurNom} a livré", "{$clientNom} — {$total} — {$paiement}", $commande->boutique_id);
+        } catch (\Exception $e) {}
 
         return response()->json(['message' => 'Commande marquée comme livrée', 'commande' => $commande->fresh()->load(['client', 'boutique', 'produits'])]);
     }

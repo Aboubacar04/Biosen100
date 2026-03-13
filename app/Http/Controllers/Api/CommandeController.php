@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Commande;
 use App\Models\Employe;
 use App\Models\Produit;
+use App\Services\FcmNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -260,6 +261,17 @@ class CommandeController extends Controller
             $commande->update(['total' => $total]);
             DB::commit();
 
+            // Notification aux distributeurs si c'est une livraison
+            if ($commande->type_commande === 'livraison') {
+                try {
+                    $fcm = new FcmNotificationService();
+                    $commande->load('client');
+                    $clientNom = $commande->client->nom_complet ?? 'Client';
+                    $totalF = number_format($total, 0, ',', '.') . ' F';
+                    $fcm->envoyerAuRole('distributeur', 'Nouvelle commande livraison', "{$clientNom} — {$totalF}", $boutiqueId);
+                } catch (\Exception $e) {}
+            }
+
             return response()->json([
                 'message'  => 'Commande créée avec succès',
                 'commande' => $commande->load(['produits', 'client', 'employe', 'livreur']),
@@ -364,9 +376,9 @@ class CommandeController extends Controller
 
         DB::beginTransaction();
         try {
-           $commande->update($request->only([
-    'client_id', 'employe_id', 'livreur_id', 'type_commande', 'notes', 'numero_gp', 'paye'
-]));
+            $commande->update($request->only([
+                'client_id', 'employe_id', 'livreur_id', 'type_commande', 'notes', 'numero_gp', 'paye'
+            ]));
 
             if ($request->has('produits')) {
                 $commande->produits()->detach();
@@ -443,5 +455,23 @@ class CommandeController extends Controller
         }
 
         return response()->json($query->with(['client', 'employe', 'livreur'])->latest()->paginate(15));
+    }
+
+    public function commandesDuJourEmploye(Request $request, $employe_id)
+    {
+        $boutiqueId = $this->getBoutiqueId($request);
+
+        if (!$boutiqueId && $request->user()->isAdmin()) {
+            return response()->json([]);
+        }
+
+        return response()->json(
+            Commande::with(['client', 'produits'])
+                ->where('boutique_id', $boutiqueId)
+                ->where('employe_id', $employe_id)
+                ->whereDate('date_commande', Carbon::today())
+                ->orderBy('created_at', 'desc')
+                ->get()
+        );
     }
 }

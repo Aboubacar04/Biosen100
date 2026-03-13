@@ -48,6 +48,14 @@ Route::middleware(['auth:sanctum'])->prefix('superviseur')->group(function () {
 });
 
 // ========================================
+// 🔔 NOTIFICATIONS FCM
+// ========================================
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::post('/fcm-token', [\App\Http\Controllers\Api\FcmTokenController::class, 'store']);
+    Route::delete('/fcm-token', [\App\Http\Controllers\Api\FcmTokenController::class, 'destroy']);
+});
+
+// ========================================
 // 👤 GESTION UTILISATEURS (ADMIN SEULEMENT)
 // ========================================
 
